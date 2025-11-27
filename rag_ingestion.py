@@ -58,22 +58,16 @@ def get_or_create_collection(store: FaissStore, name: str):
 #  FILE LOADING
 # =====================================================================
 
-def load_file_content(
-    path: str,
-    xml_configs: Optional[Dict[str, XMLParseConfig]] = None,
-    fast_mode: bool = False,
-) -> str:
+def load_file_content(path: str, xml_configs: Optional[Dict[str, XMLParseConfig]] = None) -> str:
     """Load text from a supported file type (PDF, DOCX, CSV, TXT, MD, XML).
 
     Args:
         path: Chemin vers le fichier
         xml_configs: Dict optionnel {chemin_fichier: XMLParseConfig} pour les fichiers XML
-        fast_mode: Si True, désactive l'extraction des tableaux PDF (plus rapide)
     """
     ext = os.path.splitext(path)[1].lower()
     if ext == ".pdf":
-        # En mode rapide, on désactive l'extraction des tableaux (pdfplumber lent)
-        return extract_text_from_pdf(path, extract_tables=not fast_mode)
+        return extract_text_from_pdf(path)
     if ext in (".doc", ".docx"):
         # Note: legacy .doc may fail depending on content; .docx is fully supported.
         return extract_text_from_docx(path)
@@ -97,9 +91,8 @@ def detect_language(text: str) -> str:
         return "unk"
 
 
-# Variables globales pour stocker les configs (utilisées par le worker)
+# Variable globale pour stocker les configs XML (utilisée par le worker)
 _xml_configs_global: Optional[Dict[str, XMLParseConfig]] = None
-_fast_mode_global: bool = False
 
 
 def _load_single_file_worker(path: str) -> Dict[str, Any]:
@@ -108,7 +101,7 @@ def _load_single_file_worker(path: str) -> Dict[str, Any]:
     Returns a dict with path, text, language, and error (if any).
     Must be at module level for pickling by multiprocessing.
     """
-    global _xml_configs_global, _fast_mode_global
+    global _xml_configs_global
 
     result = {
         "path": path,
@@ -122,7 +115,7 @@ def _load_single_file_worker(path: str) -> Dict[str, Any]:
             result["error"] = f"File not found: {path}"
             return result
 
-        text = load_file_content(path, _xml_configs_global, fast_mode=_fast_mode_global)
+        text = load_file_content(path, _xml_configs_global)
 
         if not text.strip():
             result["error"] = f"No text extracted from {path}"
@@ -152,7 +145,6 @@ def ingest_documents(
     logical_paths: Optional[Dict[str, str]] = None,
     progress_callback: Optional[callable] = None,
     xml_configs: Optional[Dict[str, XMLParseConfig]] = None,
-    fast_mode: bool = False,
 ) -> Dict[str, Any]:
     """Ingest a list of documents into a FAISS collection.
 
@@ -165,21 +157,15 @@ def ingest_documents(
 
     Args:
         xml_configs: Dict optionnel {chemin_fichier: XMLParseConfig} pour les fichiers XML
-        fast_mode: Si True, désactive les traitements lourds pour une ingestion plus rapide:
-                   - Pas d'extraction des tableaux PDF (pdfplumber)
-                   - Pas d'augmentation des chunks (keywords, key phrases)
-                   - Pas de détection des cross-références
 
     Returns a small report with total_chunks and per-file info.
     """
-    global _xml_configs_global, _fast_mode_global
+    global _xml_configs_global
     _xml_configs_global = xml_configs  # Rendre accessible au worker
-    _fast_mode_global = fast_mode  # Rendre accessible au worker
 
     _log = log or logger
 
-    mode_info = " [MODE RAPIDE]" if fast_mode else ""
-    _log.info(f"[INGEST]{mode_info} DB={db_path} | collection={collection_name}")
+    _log.info(f"[INGEST] DB={db_path} | collection={collection_name}")
     client = build_faiss_store(db_path)
 
     # Option rebuild: drop collection if it already exists
@@ -328,20 +314,18 @@ def ingest_documents(
                 add_context_prefix=True,
             )
 
-            # Augmenter les chunks avec mots-clés et métadonnées (sauf en fast_mode)
-            if not fast_mode:
-                smart_chunks = augment_chunks(
-                    smart_chunks,
-                    add_keywords=True,
-                    add_key_phrases=True,
-                    add_density_info=True,
-                )
+            # Augmenter les chunks avec mots-clés et métadonnées
+            smart_chunks = augment_chunks(
+                smart_chunks,
+                add_keywords=True,
+                add_key_phrases=True,
+                add_density_info=True,
+            )
 
-                # Ajouter les cross-références (liens vers autres sections)
-                smart_chunks = add_cross_references_to_chunks(smart_chunks)
+            # Ajouter les cross-références (liens vers autres sections)
+            smart_chunks = add_cross_references_to_chunks(smart_chunks)
 
-            mode_str = "fast" if fast_mode else "augmented"
-            _log.info(f"[INGEST] Adaptive chunking: {len(sections)} sections → {len(smart_chunks)} {mode_str} chunks")
+            _log.info(f"[INGEST] Adaptive chunking: {len(sections)} sections → {len(smart_chunks)} augmented chunks")
 
             for smart_chunk in smart_chunks:
                 ch = smart_chunk.get("text", "")
@@ -427,20 +411,18 @@ def ingest_documents(
                 preserve_headers=True,
             )
 
-            # Augmenter les chunks avec mots-clés et métadonnées (sauf en fast_mode)
-            if not fast_mode:
-                smart_chunks = augment_chunks(
-                    smart_chunks,
-                    add_keywords=True,
-                    add_key_phrases=True,
-                    add_density_info=True,
-                )
+            # Augmenter les chunks avec mots-clés et métadonnées
+            smart_chunks = augment_chunks(
+                smart_chunks,
+                add_keywords=True,
+                add_key_phrases=True,
+                add_density_info=True,
+            )
 
-                # Ajouter les cross-références (liens vers autres sections)
-                smart_chunks = add_cross_references_to_chunks(smart_chunks)
+            # Ajouter les cross-références (liens vers autres sections)
+            smart_chunks = add_cross_references_to_chunks(smart_chunks)
 
-            mode_str = "fast" if fast_mode else "augmented"
-            _log.info(f"[INGEST] Adaptive generic chunking: {len(smart_chunks)} {mode_str} chunks")
+            _log.info(f"[INGEST] Adaptive generic chunking: {len(smart_chunks)} augmented chunks")
 
             for smart_chunk in smart_chunks:
                 ch = smart_chunk.get("text", "")
