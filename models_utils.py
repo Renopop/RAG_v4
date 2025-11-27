@@ -4,7 +4,9 @@ import sys
 import math
 import time
 import traceback
-from typing import List, Optional
+from typing import List, Optional, Tuple
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import multiprocessing
 
 import numpy as np
 import httpx
@@ -23,6 +25,7 @@ LLM_MODEL = "dallem-val"
 EMBED_MODEL = "snowflake-arctic-embed-l-v2.0"
 BATCH_SIZE = 32  # taille batch embeddings (équilibre performance/sécurité)
 MAX_CHARS_PER_TEXT = 28000  # ~7000 tokens max par texte (limite Snowflake: 8192 tokens)
+PARALLEL_EMBEDDING_WORKERS = min(4, multiprocessing.cpu_count())  # Workers parallèles pour API embeddings
 
 HARDCODE = {
     "DALLEM_API_BASE": "https://api.dev.dassault-aviation.pro/dallem-pilote/v1",
@@ -239,6 +242,99 @@ class DirectOpenAIEmbeddings:
         return self._create_embeddings(inputs)
 
 
+def _embed_single_batch(
+    batch_info: Tuple[int, List[str]],
+    role: str,
+    emb_client: DirectOpenAIEmbeddings,
+    dry_run: bool,
+) -> Tuple[int, List[List[float]]]:
+    """
+    Embed un seul batch de textes (fonction worker pour le parallélisme).
+    Retourne (batch_index, embeddings).
+    """
+    batch_idx, chunk = batch_info
+    if dry_run:
+        dim = 1024
+        fake = np.random.rand(len(chunk), dim).astype(np.float32) - 0.5
+        return (batch_idx, fake.tolist())
+    else:
+        if role == "query":
+            return (batch_idx, emb_client.embed_queries(chunk))
+        else:
+            return (batch_idx, emb_client.embed_documents(chunk))
+
+
+def _embed_sequential(
+    batches: List[Tuple[int, List[str]]],
+    role: str,
+    emb_client: DirectOpenAIEmbeddings,
+    log: Logger,
+    dry_run: bool,
+) -> List[List[float]]:
+    """
+    Méthode séquentielle d'embedding (fallback).
+    """
+    out: List[List[float]] = []
+    total_batches = len(batches)
+
+    for batch_idx, chunk in batches:
+        log.debug(
+            f"[emb-seq] batch {batch_idx + 1}/{total_batches} "
+            f"| size={len(chunk)}"
+        )
+        try:
+            _, embeddings = _embed_single_batch((batch_idx, chunk), role, emb_client, dry_run)
+            out.extend(embeddings)
+        except Exception as e:
+            log.error(f"[emb-seq] échec batch {batch_idx} — {e}")
+            raise
+
+    return out
+
+
+def _embed_parallel(
+    batches: List[Tuple[int, List[str]]],
+    role: str,
+    emb_client: DirectOpenAIEmbeddings,
+    log: Logger,
+    dry_run: bool,
+    max_workers: int,
+) -> List[List[float]]:
+    """
+    Méthode parallèle d'embedding avec ThreadPoolExecutor.
+    """
+    total_batches = len(batches)
+    results: dict = {}  # batch_idx -> embeddings
+
+    log.info(f"[emb-parallel] Démarrage avec {max_workers} workers pour {total_batches} batches")
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Soumettre tous les batches
+        future_to_batch = {
+            executor.submit(_embed_single_batch, batch, role, emb_client, dry_run): batch[0]
+            for batch in batches
+        }
+
+        completed = 0
+        for future in as_completed(future_to_batch):
+            batch_idx = future_to_batch[future]
+            try:
+                idx, embeddings = future.result()
+                results[idx] = embeddings
+                completed += 1
+                log.debug(f"[emb-parallel] batch {idx + 1}/{total_batches} terminé ({completed}/{total_batches})")
+            except Exception as e:
+                log.error(f"[emb-parallel] échec batch {batch_idx} — {e}")
+                raise
+
+    # Reconstruire la liste ordonnée
+    out: List[List[float]] = []
+    for i in range(total_batches):
+        out.extend(results[i])
+
+    return out
+
+
 def embed_in_batches(
     texts: List[str],
     role: str,
@@ -246,10 +342,15 @@ def embed_in_batches(
     emb_client: DirectOpenAIEmbeddings,
     log: Logger,
     dry_run: bool = False,
+    use_parallel: bool = True,
 ) -> np.ndarray:
     """
     Découpe en batches, appelle le client embeddings, normalise les vecteurs (L2).
     Tronque automatiquement les textes trop longs pour éviter les erreurs de tokens.
+
+    Args:
+        use_parallel: Si True, utilise le traitement parallèle (multicoeur).
+                     Si erreur, fallback automatique sur séquentiel.
     """
     # Tronquer les textes trop longs (limite Snowflake: 8192 tokens ≈ 28000 chars)
     truncated_count = 0
@@ -264,31 +365,36 @@ def embed_in_batches(
     if truncated_count > 0:
         log.warning(f"[emb] {truncated_count} texte(s) tronqué(s) à {MAX_CHARS_PER_TEXT} caractères")
 
-    out: List[List[float]] = []
     n = len(safe_texts)
-    log.info(
-        f"[emb] start role={role} | n={n} | batch_size={batch_size} | dry_run={dry_run}"
-    )
+
+    # Préparer les batches
+    batches: List[Tuple[int, List[str]]] = []
+    batch_idx = 0
     for i in range(0, n, batch_size):
         chunk = safe_texts[i: i + batch_size]
-        log.debug(
-            f"[emb] chunk {i // batch_size + 1}/{math.ceil(n / max(1, batch_size))} "
-            f"| size={len(chunk)} | first='{(chunk[0][:120] if chunk else '')}'"
-        )
+        batches.append((batch_idx, chunk))
+        batch_idx += 1
+
+    total_batches = len(batches)
+    mode = "parallel" if use_parallel and total_batches > 1 else "sequential"
+    log.info(
+        f"[emb] start role={role} | n={n} | batch_size={batch_size} | "
+        f"batches={total_batches} | mode={mode} | workers={PARALLEL_EMBEDDING_WORKERS} | dry_run={dry_run}"
+    )
+
+    out: List[List[float]] = []
+
+    # Essayer le mode parallèle si activé et plusieurs batches
+    if use_parallel and total_batches > 1:
         try:
-            if dry_run:
-                dim = 1024
-                fake = np.random.rand(len(chunk), dim).astype(np.float32) - 0.5
-                out.extend(fake.tolist())
-            else:
-                if role == "query":
-                    out.extend(emb_client.embed_queries(chunk))
-                else:
-                    out.extend(emb_client.embed_documents(chunk))
+            out = _embed_parallel(batches, role, emb_client, log, dry_run, PARALLEL_EMBEDDING_WORKERS)
+            log.info(f"[emb] Mode parallèle OK ({total_batches} batches, {PARALLEL_EMBEDDING_WORKERS} workers)")
         except Exception as e:
-            log.error(f"[emb] échec sur le chunk (i={i}) — {e}")
-            log.debug(traceback.format_exc())
-            raise
+            log.warning(f"[emb] Mode parallèle échoué, fallback séquentiel: {e}")
+            out = _embed_sequential(batches, role, emb_client, log, dry_run)
+    else:
+        # Mode séquentiel direct
+        out = _embed_sequential(batches, role, emb_client, log, dry_run)
 
     M = np.asarray(out, dtype=np.float32)
     if M.ndim != 2 or M.shape[0] != n:
