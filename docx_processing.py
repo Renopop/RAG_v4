@@ -8,81 +8,123 @@ import shutil
 import logging
 
 
+def _convert_with_word(doc_path: str, temp_dir: str) -> str:
+    """Convertit .doc → .docx avec Microsoft Word (Windows uniquement)."""
+    try:
+        import win32com.client
+        import pythoncom
+    except ImportError:
+        raise RuntimeError("pywin32 non installé. Exécutez: pip install pywin32")
+
+    # Initialiser COM pour ce thread
+    pythoncom.CoInitialize()
+
+    word = None
+    doc = None
+    try:
+        word = win32com.client.Dispatch("Word.Application")
+        word.Visible = False
+        word.DisplayAlerts = False
+
+        # Chemin absolu requis par Word
+        abs_doc_path = os.path.abspath(doc_path)
+
+        # Ouvrir le document
+        doc = word.Documents.Open(abs_doc_path)
+
+        # Chemin de sortie
+        base_name = os.path.splitext(os.path.basename(doc_path))[0]
+        docx_path = os.path.join(temp_dir, f"{base_name}.docx")
+        abs_docx_path = os.path.abspath(docx_path)
+
+        # Sauvegarder en .docx (format 16 = wdFormatXMLDocument)
+        doc.SaveAs2(abs_docx_path, FileFormat=16)
+
+        logging.info(f"[docx_processing] Conversion Word réussie: {docx_path}")
+        return docx_path
+
+    finally:
+        if doc:
+            doc.Close(False)
+        if word:
+            word.Quit()
+        pythoncom.CoUninitialize()
+
+
+def _convert_with_libreoffice(doc_path: str, temp_dir: str) -> str:
+    """Convertit .doc → .docx avec LibreOffice."""
+    soffice_paths = [
+        "soffice",
+        "/usr/bin/soffice",
+        "/usr/bin/libreoffice",
+        r"C:\Program Files\LibreOffice\program\soffice.exe",
+        r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
+    ]
+
+    soffice_cmd = None
+    for path in soffice_paths:
+        if os.path.isfile(path) or shutil.which(path):
+            soffice_cmd = path
+            break
+
+    if not soffice_cmd:
+        raise RuntimeError("LibreOffice non trouvé")
+
+    cmd = [
+        soffice_cmd,
+        "--headless",
+        "--convert-to", "docx",
+        "--outdir", temp_dir,
+        doc_path
+    ]
+
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+
+    if result.returncode != 0:
+        raise RuntimeError(f"Erreur LibreOffice: {result.stderr}")
+
+    base_name = os.path.splitext(os.path.basename(doc_path))[0]
+    docx_path = os.path.join(temp_dir, f"{base_name}.docx")
+
+    if not os.path.isfile(docx_path):
+        raise RuntimeError(f"Fichier converti introuvable: {docx_path}")
+
+    logging.info(f"[docx_processing] Conversion LibreOffice réussie: {docx_path}")
+    return docx_path
+
+
 def convert_doc_to_docx(doc_path: str) -> str:
     """
-    Convertit un fichier .doc en .docx en utilisant LibreOffice.
+    Convertit un fichier .doc en .docx.
+
+    Essaie d'abord Microsoft Word (Windows), puis LibreOffice en fallback.
 
     Retourne le chemin vers le fichier .docx créé (dans un dossier temporaire).
     Le fichier temporaire doit être supprimé par l'appelant après usage.
-
-    Raises:
-        RuntimeError: Si LibreOffice n'est pas installé ou si la conversion échoue.
     """
-    # Vérifier que le fichier existe
     if not os.path.isfile(doc_path):
         raise FileNotFoundError(f"Fichier introuvable: {doc_path}")
 
-    # Créer un dossier temporaire pour la sortie
     temp_dir = tempfile.mkdtemp(prefix="doc_convert_")
 
+    logging.info(f"[docx_processing] Conversion .doc → .docx: {os.path.basename(doc_path)}")
+
+    # Essayer d'abord Microsoft Word (Windows)
+    if os.name == 'nt':  # Windows
+        try:
+            return _convert_with_word(doc_path, temp_dir)
+        except Exception as e:
+            logging.warning(f"[docx_processing] Word non disponible: {e}")
+
+    # Fallback sur LibreOffice
     try:
-        # Chercher LibreOffice (Windows / Linux)
-        soffice_paths = [
-            "soffice",  # Linux (dans PATH)
-            "/usr/bin/soffice",
-            "/usr/bin/libreoffice",
-            r"C:\Program Files\LibreOffice\program\soffice.exe",
-            r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
-        ]
-
-        soffice_cmd = None
-        for path in soffice_paths:
-            if os.path.isfile(path) or shutil.which(path):
-                soffice_cmd = path
-                break
-
-        if not soffice_cmd:
-            raise RuntimeError(
-                "LibreOffice non trouvé. Installez LibreOffice pour convertir les fichiers .doc"
-            )
-
-        # Commande de conversion
-        cmd = [
-            soffice_cmd,
-            "--headless",
-            "--convert-to", "docx",
-            "--outdir", temp_dir,
-            doc_path
-        ]
-
-        logging.info(f"[docx_processing] Conversion .doc → .docx: {os.path.basename(doc_path)}")
-
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=120  # 2 minutes max
-        )
-
-        if result.returncode != 0:
-            raise RuntimeError(f"Erreur LibreOffice: {result.stderr}")
-
-        # Trouver le fichier .docx généré
-        base_name = os.path.splitext(os.path.basename(doc_path))[0]
-        docx_path = os.path.join(temp_dir, f"{base_name}.docx")
-
-        if not os.path.isfile(docx_path):
-            raise RuntimeError(f"Fichier converti introuvable: {docx_path}")
-
-        logging.info(f"[docx_processing] Conversion réussie: {docx_path}")
-        return docx_path
-
-    except subprocess.TimeoutExpired:
-        shutil.rmtree(temp_dir, ignore_errors=True)
-        raise RuntimeError("Timeout lors de la conversion .doc → .docx")
+        return _convert_with_libreoffice(doc_path, temp_dir)
     except Exception as e:
         shutil.rmtree(temp_dir, ignore_errors=True)
-        raise
+        raise RuntimeError(
+            f"Impossible de convertir {doc_path}. "
+            f"Installez Microsoft Word ou LibreOffice. Erreur: {e}"
+        )
 
 
 def docx_to_text(docx_path):
