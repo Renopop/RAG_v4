@@ -48,6 +48,18 @@ try:
 except ImportError:
     extract_attachments_from_pdf = None
 
+# Optionnel : support Confluence
+try:
+    from confluence_processing import (
+        test_confluence_connection,
+        list_spaces,
+        get_space_info,
+        extract_text_from_confluence_space,
+    )
+    CONFLUENCE_AVAILABLE = True
+except ImportError:
+    CONFLUENCE_AVAILABLE = False
+
 logger = make_logger(debug=False)
 
 
@@ -514,12 +526,12 @@ current_user = getpass.getuser().lower()
 
 # Créer les tabs conditionnellement
 if current_user in ANALYTICS_AUTHORIZED_USERS:
-    tab_csv, tab_ingest, tab_purge, tab_rag, tab_analytics = st.tabs(
-        ["📝 Gestion CSV", "📥 Ingestion documents", "🗑️ Purge des bases", "❓ Questions RAG", "📊 Tableau de bord"]
+    tab_csv, tab_ingest, tab_confluence, tab_purge, tab_rag, tab_analytics = st.tabs(
+        ["📝 Gestion CSV", "📥 Ingestion documents", "🌐 Confluence", "🗑️ Purge des bases", "❓ Questions RAG", "📊 Tableau de bord"]
     )
 else:
-    tab_csv, tab_ingest, tab_purge, tab_rag = st.tabs(
-        ["📝 Gestion CSV", "📥 Ingestion documents", "🗑️ Purge des bases", "❓ Questions RAG"]
+    tab_csv, tab_ingest, tab_confluence, tab_purge, tab_rag = st.tabs(
+        ["📝 Gestion CSV", "📥 Ingestion documents", "🌐 Confluence", "🗑️ Purge des bases", "❓ Questions RAG"]
     )
     tab_analytics = None  # Pas d'accès au tableau de bord
 
@@ -1299,6 +1311,265 @@ with tab_ingest:
 
                 # Masquer le bouton stop
                 stop_button_placeholder.empty()
+
+
+# ========================
+#   TAB CONFLUENCE
+# ========================
+with tab_confluence:
+    st.subheader("🌐 Ingestion depuis Confluence")
+
+    if not CONFLUENCE_AVAILABLE:
+        st.error(
+            "❌ Le module Confluence n'est pas disponible. "
+            "Installez les dépendances : `pip install beautifulsoup4 requests`"
+        )
+    else:
+        st.markdown("""
+        Cette page permet d'ingérer le contenu d'un **espace Confluence entier** dans le RAG.
+
+        **Prérequis :**
+        - URL de votre instance Confluence
+        - Identifiants (nom d'utilisateur + mot de passe ou token API)
+        - Clé de l'espace à ingérer (ex: `PROJ`, `DOC`, `KB`)
+        """)
+
+        # Initialisation session_state pour Confluence
+        if "confluence_connected" not in st.session_state:
+            st.session_state.confluence_connected = False
+        if "confluence_spaces" not in st.session_state:
+            st.session_state.confluence_spaces = []
+
+        st.markdown("---")
+        st.markdown("### 1️⃣ Connexion à Confluence")
+
+        col_url, col_user = st.columns(2)
+        with col_url:
+            confluence_url = st.text_input(
+                "URL Confluence",
+                placeholder="https://votre-entreprise.atlassian.net",
+                help="URL de base de votre instance Confluence (Cloud ou Server)"
+            )
+        with col_user:
+            confluence_user = st.text_input(
+                "Nom d'utilisateur / Email",
+                placeholder="votre.email@entreprise.com"
+            )
+
+        confluence_password = st.text_input(
+            "Mot de passe / Token API",
+            type="password",
+            help="Pour Confluence Cloud, utilisez un token API (créé depuis les paramètres Atlassian)"
+        )
+
+        col_test, col_status = st.columns([1, 3])
+        with col_test:
+            if st.button("🔗 Tester la connexion", disabled=not (confluence_url and confluence_user and confluence_password)):
+                with st.spinner("Test de connexion..."):
+                    result = test_confluence_connection(confluence_url, confluence_user, confluence_password)
+                    if result["success"]:
+                        st.session_state.confluence_connected = True
+                        st.session_state.confluence_url = confluence_url
+                        st.session_state.confluence_user = confluence_user
+                        st.session_state.confluence_password = confluence_password
+                        # Charger la liste des espaces
+                        st.session_state.confluence_spaces = list_spaces(confluence_url, confluence_user, confluence_password)
+                        st.success(result["message"])
+                    else:
+                        st.session_state.confluence_connected = False
+                        st.error(result["message"])
+
+        with col_status:
+            if st.session_state.confluence_connected:
+                st.success("✅ Connecté à Confluence")
+
+        # Section de sélection de l'espace (visible seulement si connecté)
+        if st.session_state.confluence_connected:
+            st.markdown("---")
+            st.markdown("### 2️⃣ Sélection de l'espace")
+
+            # Liste déroulante des espaces ou saisie manuelle
+            space_input_mode = st.radio(
+                "Mode de sélection",
+                ["Liste des espaces", "Saisie manuelle"],
+                horizontal=True
+            )
+
+            if space_input_mode == "Liste des espaces":
+                if st.session_state.confluence_spaces:
+                    space_options = {f"{s['name']} ({s['key']})": s['key'] for s in st.session_state.confluence_spaces}
+                    selected_space_label = st.selectbox(
+                        "Espace Confluence",
+                        options=list(space_options.keys())
+                    )
+                    confluence_space_key = space_options.get(selected_space_label, "")
+                else:
+                    st.warning("Aucun espace trouvé. Utilisez la saisie manuelle.")
+                    confluence_space_key = ""
+            else:
+                confluence_space_key = st.text_input(
+                    "Clé de l'espace",
+                    placeholder="PROJ",
+                    help="La clé de l'espace (visible dans l'URL des pages)"
+                )
+
+            # Afficher les infos de l'espace
+            if confluence_space_key:
+                space_info = get_space_info(
+                    st.session_state.confluence_url,
+                    confluence_space_key,
+                    st.session_state.confluence_user,
+                    st.session_state.confluence_password
+                )
+                if space_info:
+                    st.info(f"📁 **{space_info['name']}** - {space_info.get('description', 'Pas de description')[:100]}")
+                else:
+                    st.warning(f"⚠️ Espace '{confluence_space_key}' non trouvé ou inaccessible")
+
+            st.markdown("---")
+            st.markdown("### 3️⃣ Configuration de l'ingestion")
+
+            col_base, col_collection = st.columns(2)
+            with col_base:
+                confluence_target_base = st.selectbox(
+                    "Base FAISS cible",
+                    options=bases if bases else ["(aucune base)"],
+                    help="Base où stocker le contenu Confluence"
+                )
+            with col_collection:
+                confluence_collection = st.text_input(
+                    "Nom de la collection",
+                    value=confluence_space_key.lower() if confluence_space_key else "",
+                    help="Nom de la collection (par défaut: clé de l'espace)"
+                )
+
+            # Options d'ingestion
+            confluence_rebuild = st.checkbox(
+                "🔄 Reconstruire la collection (supprimer l'existant)",
+                value=True,
+                help="Recommandé pour une mise à jour hebdomadaire complète"
+            )
+
+            st.markdown("---")
+            st.markdown("### 4️⃣ Lancer l'ingestion")
+
+            can_ingest = (
+                confluence_space_key
+                and confluence_target_base
+                and confluence_target_base != "(aucune base)"
+                and confluence_collection
+            )
+
+            if st.button("🚀 Ingérer l'espace Confluence", disabled=not can_ingest, type="primary"):
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                log_container = st.empty()
+                logs = []
+
+                def log(msg):
+                    logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
+                    log_container.code("\n".join(logs[-20:]), language="")
+
+                def progress(value, text):
+                    progress_bar.progress(value)
+                    status_text.text(text)
+
+                try:
+                    # Étape 1: Extraction depuis Confluence
+                    log(f"Extraction de l'espace {confluence_space_key}...")
+                    progress(0.1, "Extraction des pages Confluence...")
+
+                    pages = extract_text_from_confluence_space(
+                        st.session_state.confluence_url,
+                        confluence_space_key,
+                        st.session_state.confluence_user,
+                        st.session_state.confluence_password,
+                        progress_cb=lambda p, t: progress(0.1 + p * 0.4, t)
+                    )
+
+                    if not pages:
+                        st.error("❌ Aucune page extraite depuis Confluence")
+                    else:
+                        log(f"✅ {len(pages)} pages extraites")
+
+                        # Étape 2: Créer des fichiers temporaires pour l'ingestion
+                        progress(0.5, "Préparation des fichiers pour ingestion...")
+                        temp_dir = tempfile.mkdtemp(prefix="confluence_")
+                        file_paths = []
+                        logical_paths = {}
+
+                        for page in pages:
+                            if not page.get("text", "").strip():
+                                continue
+
+                            # Créer un fichier .txt temporaire pour chaque page
+                            safe_title = "".join(c if c.isalnum() or c in " -_" else "_" for c in page["title"])[:50]
+                            temp_file = os.path.join(temp_dir, f"{page['id']}_{safe_title}.txt")
+
+                            with open(temp_file, "w", encoding="utf-8") as f:
+                                f.write(page["text"])
+
+                            file_paths.append(temp_file)
+                            # Chemin logique = URL de la page Confluence
+                            logical_paths[temp_file] = page.get("url", page["path"])
+
+                        log(f"📄 {len(file_paths)} fichiers préparés")
+
+                        # Étape 3: Ingestion dans FAISS
+                        progress(0.6, "Ingestion dans FAISS...")
+                        db_path = os.path.join(base_root, confluence_target_base)
+
+                        report = ingest_documents(
+                            file_paths=file_paths,
+                            db_path=db_path,
+                            collection_name=confluence_collection,
+                            chunk_size=1000,
+                            use_easa_sections=False,  # Pas de sections EASA pour Confluence
+                            rebuild=confluence_rebuild,
+                            log=logger,
+                            logical_paths=logical_paths,
+                            progress_callback=lambda p, t: progress(0.6 + p * 0.35, t),
+                        )
+
+                        log(f"✅ Ingestion terminée: {report.get('total_chunks', 0)} chunks créés")
+
+                        # Nettoyage
+                        shutil.rmtree(temp_dir, ignore_errors=True)
+
+                        progress(1.0, "Terminé!")
+                        st.success(
+                            f"✅ **Ingestion réussie !**\n\n"
+                            f"- Pages traitées: {len(pages)}\n"
+                            f"- Chunks créés: {report.get('total_chunks', 0)}\n"
+                            f"- Base: {confluence_target_base}\n"
+                            f"- Collection: {confluence_collection}"
+                        )
+
+                except Exception as e:
+                    st.error(f"❌ Erreur lors de l'ingestion: {str(e)}")
+                    log(f"ERREUR: {str(e)}")
+                    import traceback
+                    log(traceback.format_exc())
+
+            # Note sur l'automatisation hebdomadaire
+            st.markdown("---")
+            st.markdown("""
+            ### 💡 Automatisation hebdomadaire
+
+            Pour une synchronisation automatique hebdomadaire, vous pouvez :
+            1. Créer un script Python utilisant ce module
+            2. Le planifier avec le **Planificateur de tâches Windows** ou **cron** (Linux)
+
+            Exemple de script :
+            ```python
+            from confluence_processing import extract_text_from_confluence_space
+            from rag_ingestion import ingest_documents
+
+            # Extraction et ingestion
+            pages = extract_text_from_confluence_space(URL, SPACE, USER, PASSWORD)
+            # ... (voir le code source pour les détails)
+            ```
+            """)
 
 
 # ========================

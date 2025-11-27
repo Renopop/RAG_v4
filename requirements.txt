@@ -21,6 +21,7 @@ pywin32>=306; sys_platform == "win32"  # Conversion .doc → .docx via Microsoft
 langdetect>=1.0.9
 unidecode>=1.3.6
 chardet>=5.1.0
+beautifulsoup4>=4.12.0  # Parsing HTML (Confluence)
 
 # API et modèles (Snowflake Arctic + DALLEM)
 openai>=1.0.0
