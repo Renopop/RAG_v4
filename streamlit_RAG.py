@@ -635,23 +635,6 @@ with tab_ingest:
     )
     st.session_state["use_easa_sections"] = use_easa_sections
 
-    # Option mode rapide
-    if "fast_mode_ingestion" not in st.session_state:
-        st.session_state["fast_mode_ingestion"] = False
-
-    fast_mode_ingestion = st.checkbox(
-        "⚡ Mode rapide (ingestion accélérée)",
-        value=st.session_state["fast_mode_ingestion"],
-        help=(
-            "Active le mode rapide pour accélérer l'ingestion :\n"
-            "• Désactive l'extraction des tableaux PDF (pdfplumber)\n"
-            "• Désactive l'augmentation des chunks (mots-clés, phrases-clés)\n"
-            "• Désactive la détection des cross-références\n\n"
-            "⚠️ La qualité de recherche peut être légèrement réduite."
-        ),
-    )
-    st.session_state["fast_mode_ingestion"] = fast_mode_ingestion
-
     st.markdown("---")
 
     # Sélection de CSV depuis CSV_IMPORT_DIR
@@ -1174,7 +1157,6 @@ with tab_ingest:
                                         logical_paths=logical_paths,
                                         progress_callback=progress,
                                         xml_configs=xml_configs_for_ingestion,
-                                        fast_mode=fast_mode_ingestion,
                                     )
                                     log(
                                         f"[INGEST] OK base={base_name}, collection={group_name}, "
