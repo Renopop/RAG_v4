@@ -1,0 +1,53 @@
+# Système RAG avec FAISS et Streamlit
+
+# Interface web Streamlit
+streamlit>=1.28.0
+
+# Interface GUI pour création de CSV (CustomTkinter)
+customtkinter>=5.2.0
+
+# Base de données vectorielle - FAISS
+faiss-cpu>=1.7.4
+# Note: utilisez faiss-gpu si vous avez un GPU CUDA disponible
+
+# Traitement de documents
+pdfminer.six>=20221105
+pymupdf>=1.24.0  # Fallback pour extraction PDF robuste
+python-docx>=0.8.11
+
+# Traitement de texte
+langdetect>=1.0.9
+unidecode>=1.3.6
+chardet>=5.1.0
+
+# API et modèles (Snowflake Arctic + DALLEM)
+openai>=1.0.0
+httpx>=0.24.0
+requests>=2.31.0  # Fallback pour appels HTTP
+
+# Utilitaires
+numpy>=1.24.0
+packaging>=23.0
+
+# === DÉPENDANCES POUR MODÈLES LOCAUX ===
+
+# Core ML
+torch>=2.0.0
+# Note: Pour CUDA, installez avec: pip install torch --index-url https://download.pytorch.org/whl/cu121
+
+# Pour les embeddings locaux et reranker (sentence-transformers)
+sentence-transformers>=2.2.0
+
+# Pour les LLM locaux HuggingFace (transformers)
+transformers>=4.35.0
+accelerate>=0.25.0  # Requis pour device_map="auto"
+safetensors>=0.4.0  # Format de sauvegarde sécurisé des modèles
+sentencepiece>=0.1.99  # Tokenizer pour certains modèles (Qwen, LLaMA, etc.)
+protobuf>=3.20.0  # Dépendance de sentencepiece
+
+# HuggingFace Hub (téléchargement de modèles)
+huggingface_hub>=0.19.0
+
+# Pour les LLM locaux au format GGUF (optionnel)
+# llama-cpp-python>=0.2.0
+# Note: Pour CUDA avec llama-cpp: CMAKE_ARGS="-DLLAMA_CUDA=on" pip install llama-cpp-python
