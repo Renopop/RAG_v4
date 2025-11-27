@@ -16,7 +16,7 @@ L'application s'ouvre automatiquement dans votre navigateur sur `http://localhos
 
 ---
 
-## 📋 Les 5 onglets de l'application
+## 📋 Les 6 onglets de l'application
 
 ### 📝 **Onglet 1 : Gestion CSV**
 
@@ -160,6 +160,7 @@ Indexez vos documents dans FAISS pour pouvoir les interroger.
 | **XML** | ElementTree | - | Patterns EASA (CS, AMC, GM) |
 | **TXT/MD** | Lecture native | - | Détection encodage auto |
 | **CSV** | Lecture native | - | Extraction texte brut |
+| **Confluence** | API REST | - | ✅ Espaces entiers via onglet dédié |
 
 **Fonctionnalités d'extraction :**
 - **Extraction tableaux PDF** : Détection et formatage en markdown avec pdfplumber
@@ -225,7 +226,59 @@ Chaque chunk est enrichi automatiquement :
 
 ---
 
-### 🗑️ **Onglet 3 : Purge des bases**
+### 🌐 **Onglet 3 : Confluence**
+
+Ingérez le contenu d'un espace Confluence entier directement dans le RAG.
+
+#### 🔗 Connexion à Confluence
+
+1. **Renseignez vos informations de connexion** :
+   - **URL Confluence** : `https://votre-entreprise.atlassian.net` (Cloud) ou URL de votre serveur
+   - **Nom d'utilisateur** : votre email ou identifiant
+   - **Mot de passe / Token API** :
+     - Pour Confluence Cloud : créez un token API dans vos paramètres Atlassian
+     - Pour Confluence Server : utilisez votre mot de passe
+
+2. **Testez la connexion** :
+   - Cliquez sur **"🔗 Tester la connexion"**
+   - ✅ Si réussi : affiche votre nom d'utilisateur
+   - ❌ Si échoué : vérifiez vos identifiants
+
+#### 📁 Sélection de l'espace
+
+1. **Liste des espaces** : une liste déroulante affiche tous les espaces accessibles
+2. **Saisie manuelle** : entrez directement la clé de l'espace (ex: `PROJ`, `DOC`)
+3. **Info espace** : affiche le nom et la description de l'espace sélectionné
+
+#### ⚙️ Configuration de l'ingestion
+
+| Paramètre | Description |
+|-----------|-------------|
+| **Base FAISS cible** | Sélectionnez la base où stocker le contenu |
+| **Nom de la collection** | Par défaut = clé de l'espace (ex: `proj`) |
+| **Reconstruire** | ✅ Recommandé pour mise à jour hebdomadaire (supprime l'existant) |
+
+#### 🚀 Lancer l'ingestion
+
+1. Cliquez sur **"🚀 Ingérer l'espace Confluence"**
+2. **Progression affichée** :
+   - Extraction des pages depuis Confluence
+   - Conversion HTML → texte
+   - Chunking et embedding
+   - Stockage dans FAISS
+3. **Résumé final** : nombre de pages et chunks créés
+
+#### ⏰ Automatisation hebdomadaire
+
+Pour une synchronisation automatique :
+1. Créez un script Python utilisant `confluence_processing.py`
+2. Planifiez-le avec le **Planificateur de tâches Windows** ou **cron**
+
+> 💡 **Astuce** : L'option "Reconstruire" est idéale pour les mises à jour hebdomadaires car elle garantit une synchronisation complète.
+
+---
+
+### 🗑️ **Onglet 4 : Purge des bases**
 
 Supprimez tout le contenu d'une base (les collections sont vidées mais pas supprimées).
 
@@ -259,7 +312,7 @@ Supprimez tout le contenu d'une base (les collections sont vidées mais pas supp
 
 ---
 
-### ❓ **Onglet 4 : Questions RAG**
+### ❓ **Onglet 5 : Questions RAG**
 
 Posez des questions sur vos documents indexés et obtenez des réponses contextuelles.
 
@@ -354,7 +407,7 @@ Un champ texte s'affiche pour décrire la **réponse que vous attendiez**. Cette
 
 ---
 
-### 📊 **Onglet 5 : Tableau de bord analytique**
+### 📊 **Onglet 6 : Tableau de bord analytique**
 
 Visualisez les statistiques et tendances des retours utilisateurs.
 
@@ -448,6 +501,7 @@ Visualisez les statistiques et tendances des retours utilisateurs.
 - **DOC** : ✅ Conversion automatique via Microsoft Word (Windows uniquement)
 - **XML** : Parser EASA configurable (CS, AMC, GM, CS-E, CS-APU)
 - **TXT/MD/CSV** : Lecture native avec détection encodage
+- **Confluence** : ✅ Ingestion via API REST (onglet dédié)
 
 **Q : Les sections EASA sont-elles détectées automatiquement ?**
 - ✅ **Oui !** Patterns détectés : `CS 25.xxx`, `AMC`, `GM`, `CS-E`, `CS-APU`
@@ -459,6 +513,24 @@ Visualisez les statistiques et tendances des retours utilisateurs.
 - Références FAR/JAR : `FAR 25.571`, `JAR 25.571`
 - Références internes : `paragraph (a)`, `sub-paragraph (1)`
 - Max 5 références stockées par chunk
+
+### Confluence
+
+**Q : Comment ingérer un espace Confluence ?**
+- Utilisez l'onglet "🌐 Confluence" dans l'application
+- Renseignez URL, identifiant et mot de passe/token
+- Sélectionnez l'espace à ingérer
+- Cliquez sur "🚀 Ingérer l'espace Confluence"
+
+**Q : Quelle authentification pour Confluence Cloud ?**
+- Utilisez un **Token API** (pas votre mot de passe)
+- Créez-le dans : Paramètres Atlassian → Sécurité → Tokens API
+- Votre identifiant = votre email
+
+**Q : Comment automatiser la synchronisation Confluence ?**
+- Créez un script Python utilisant `confluence_processing.py`
+- Planifiez-le avec le Planificateur de tâches Windows (hebdomadaire)
+- Utilisez l'option "Reconstruire" pour une synchronisation complète
 
 ### Requêtes
 
@@ -506,7 +578,7 @@ Pour toute question ou problème, contactez l'équipe de développement RaGME_UP
 
 ---
 
-## 🆕 Nouveautés de cette version (v1.4)
+## 🆕 Nouveautés de cette version (v1.5)
 
 ### 📊 Extraction de tableaux PDF (NOUVEAU)
 - 📋 **pdfplumber** : détection automatique des tableaux dans les PDF
@@ -536,6 +608,13 @@ Pour toute question ou problème, contactez l'équipe de développement RaGME_UP
 - **DOCX** : python-docx avec tables, sections, paragraphes
 - **DOC** : ✅ Conversion automatique via Microsoft Word (Windows)
 - **XML** : Parser EASA configurable (CS, AMC, GM, CS-E, CS-APU)
+
+### 🌐 Ingestion Confluence (NOUVEAU)
+- 🔗 **Connexion API** : Support Cloud (atlassian.net) et Server
+- 📁 **Espaces entiers** : ingestion de toutes les pages d'un espace
+- 🔄 **Conversion HTML→texte** : tableaux, listes, headers préservés
+- ⏰ **Automatisation** : idéal pour synchronisation hebdomadaire
+- 🎨 **Interface dédiée** : onglet "🌐 Confluence" dans l'application
 
 ### 📝 Système de feedback utilisateur
 - 👍👎 **Feedback rapide** : un simple clic pouce haut ou pouce bas

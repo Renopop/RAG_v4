@@ -39,6 +39,7 @@ L'application s'ouvre automatiquement dans votre navigateur sur `http://localhos
 
 - 📝 **Gestion CSV** avec interface GUI moderne
 - 📥 **Ingestion documents** (PDF, DOCX, DOC, TXT) avec tracking automatique
+- 🌐 **Ingestion Confluence** : chargement d'espaces entiers via API
 - 🔒 **Coordination multi-utilisateurs** avec système de verrous
 - 🗑️ **Purge des bases** FAISS
 - ❓ **Questions RAG** avec recherche sémantique et génération de réponses
@@ -205,6 +206,7 @@ Document
 | `easa_sections.py` | Parser de sections EASA (CS/AMC/GM) |
 | `rag_ingestion.py` | Orchestration du chunking lors de l'ingestion |
 | `rag_query.py` | Context expansion lors des requêtes |
+| `confluence_processing.py` | API Confluence et conversion HTML→texte |
 
 ---
 
@@ -222,6 +224,7 @@ Le système supporte l'extraction de texte depuis de multiples formats de docume
 | **XML** | xml.etree.ElementTree | - | Patterns EASA configurables |
 | **TXT/MD** | Lecture native | - | Détection encodage |
 | **CSV** | Lecture native | - | Extraction texte brut |
+| **Confluence** | API REST | - | ✅ Espaces entiers, conversion HTML→texte |
 
 ### Parser PDF (`pdf_processing.py`)
 
@@ -312,6 +315,50 @@ XMLParseConfig(
     excluded_tags=['note', 'amendment']
 )
 ```
+
+### Ingestion Confluence (`confluence_processing.py`)
+
+Ingestion directe depuis Confluence Cloud ou Server via l'API REST :
+
+```
+┌─────────────────────────────┐
+│  Connexion Confluence       │
+│  (URL, user, password/token)│
+└──────────────┬──────────────┘
+               │
+               ▼
+┌─────────────────────────────┐
+│  Récupération pages         │
+│  de l'espace (pagination)   │
+└──────────────┬──────────────┘
+               │
+               ▼
+┌─────────────────────────────┐
+│  Conversion HTML → Texte    │
+│  (BeautifulSoup)            │
+└──────────────┬──────────────┘
+               │
+               ▼
+┌─────────────────────────────┐
+│  Ingestion dans FAISS       │
+│  (chunks + embeddings)      │
+└─────────────────────────────┘
+```
+
+**Fonctionnalités :**
+- Support Confluence Cloud (atlassian.net) et Server
+- Liste automatique des espaces disponibles
+- Extraction de toutes les pages d'un espace
+- Conversion HTML vers texte propre (tableaux, listes, headers)
+- URL de page stockée comme chemin logique
+- Idéal pour synchronisation hebdomadaire
+
+**Interface dédiée :**
+Onglet "🌐 Confluence" dans l'application Streamlit avec :
+1. Formulaire de connexion (test de connexion)
+2. Sélection de l'espace (liste ou saisie manuelle)
+3. Configuration (base cible, collection)
+4. Bouton d'ingestion avec progression
 
 ### Chargement unifié (`rag_ingestion.py`)
 
@@ -435,5 +482,5 @@ Consultez la documentation pour toute question :
 
 ---
 
-**Version:** 1.4
+**Version:** 1.5
 **Dernière mise à jour:** 2025-11-27
