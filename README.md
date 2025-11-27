@@ -38,7 +38,7 @@ L'application s'ouvre automatiquement dans votre navigateur sur `http://localhos
 ## ✨ Fonctionnalités principales
 
 - 📝 **Gestion CSV** avec interface GUI moderne
-- 📥 **Ingestion documents** (PDF, DOCX, TXT) avec tracking automatique
+- 📥 **Ingestion documents** (PDF, DOCX, DOC, TXT) avec tracking automatique
 - 🔒 **Coordination multi-utilisateurs** avec système de verrous
 - 🗑️ **Purge des bases** FAISS
 - ❓ **Questions RAG** avec recherche sémantique et génération de réponses
@@ -218,7 +218,7 @@ Le système supporte l'extraction de texte depuis de multiples formats de docume
 |--------|------------------------|----------|---------------------------|
 | **PDF** | pdfplumber | pdfminer.six → PyMuPDF | **Extraction tableaux**, pièces jointes, nettoyage Unicode |
 | **DOCX** | python-docx | - | Tables, sections, paragraphes |
-| **DOC** | - | - | ⚠️ Non supporté (convertir en .docx) |
+| **DOC** | pywin32 (Word) | - | ✅ Conversion automatique via Microsoft Word (Windows) |
 | **XML** | xml.etree.ElementTree | - | Patterns EASA configurables |
 | **TXT/MD** | Lecture native | - | Détection encodage |
 | **CSV** | Lecture native | - | Extraction texte brut |
@@ -323,8 +323,10 @@ def load_file_content(path, xml_configs=None):
 
     if extension == '.pdf':
         return extract_text_and_attachments(path)
-    elif extension in ['.docx', '.doc']:
+    elif extension == '.docx':
         return docx_to_text(path)
+    elif extension == '.doc':
+        return extract_text_from_docx(path)  # Conversion auto via Word
     elif extension == '.xml':
         return parse_xml_with_config(path, xml_configs)
     elif extension in ['.txt', '.md']:

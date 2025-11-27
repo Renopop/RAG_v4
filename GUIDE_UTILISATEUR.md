@@ -156,7 +156,7 @@ Indexez vos documents dans FAISS pour pouvoir les interroger.
 |--------|-----------------|----------|-----------------|
 | **PDF** | pdfplumber | pdfminer.six → PyMuPDF | **Tableaux**, pièces jointes, nettoyage Unicode |
 | **DOCX** | python-docx | - | Tables, sections, paragraphes |
-| **DOC** | - | - | ⚠️ Non supporté (convertir en .docx) |
+| **DOC** | pywin32 (Word) | - | ✅ Conversion automatique via Microsoft Word (Windows) |
 | **XML** | ElementTree | - | Patterns EASA (CS, AMC, GM) |
 | **TXT/MD** | Lecture native | - | Détection encodage auto |
 | **CSV** | Lecture native | - | Extraction texte brut |
@@ -445,7 +445,7 @@ Visualisez les statistiques et tendances des retours utilisateurs.
 **Q : Quels formats de documents sont supportés ?**
 - **PDF** : pdfplumber (tableaux) + pdfminer.six + PyMuPDF fallback + pièces jointes
 - **DOCX** : python-docx avec extraction tables et sections
-- **DOC** : ⚠️ Non supporté (convertir en .docx avec Word/LibreOffice)
+- **DOC** : ✅ Conversion automatique via Microsoft Word (Windows uniquement)
 - **XML** : Parser EASA configurable (CS, AMC, GM, CS-E, CS-APU)
 - **TXT/MD/CSV** : Lecture native avec détection encodage
 
@@ -534,7 +534,7 @@ Pour toute question ou problème, contactez l'équipe de développement RaGME_UP
 ### 📄 Parsing Multi-Format
 - **PDF** : pdfplumber (tableaux) + pdfminer.six + PyMuPDF + pièces jointes
 - **DOCX** : python-docx avec tables, sections, paragraphes
-- **DOC** : ⚠️ Non supporté (convertir en .docx)
+- **DOC** : ✅ Conversion automatique via Microsoft Word (Windows)
 - **XML** : Parser EASA configurable (CS, AMC, GM, CS-E, CS-APU)
 
 ### 📝 Système de feedback utilisateur

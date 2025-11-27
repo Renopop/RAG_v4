@@ -2,19 +2,42 @@
 import docx
 import re
 import os
-import subprocess
 import tempfile
 import shutil
 import logging
 
 
-def _convert_with_word(doc_path: str, temp_dir: str) -> str:
-    """Convertit .doc → .docx avec Microsoft Word (Windows uniquement)."""
+def convert_doc_to_docx(doc_path: str) -> str:
+    """
+    Convertit un fichier .doc en .docx via Microsoft Word (Windows).
+
+    Requiert:
+    - Windows avec Microsoft Word installé
+    - pywin32 (pip install pywin32)
+
+    Retourne le chemin vers le fichier .docx créé (dans un dossier temporaire).
+    Le fichier temporaire doit être supprimé par l'appelant après usage.
+    """
+    if not os.path.isfile(doc_path):
+        raise FileNotFoundError(f"Fichier introuvable: {doc_path}")
+
+    if os.name != 'nt':
+        raise RuntimeError(
+            "La conversion .doc → .docx nécessite Windows avec Microsoft Word. "
+            "Sur Linux/Mac, convertissez manuellement vos fichiers .doc en .docx."
+        )
+
     try:
         import win32com.client
         import pythoncom
     except ImportError:
-        raise RuntimeError("pywin32 non installé. Exécutez: pip install pywin32")
+        raise RuntimeError(
+            "pywin32 non installé. Exécutez: pip install pywin32\n"
+            "Puis redémarrez Python/l'application."
+        )
+
+    temp_dir = tempfile.mkdtemp(prefix="doc_convert_")
+    logging.info(f"[docx_processing] Conversion .doc → .docx: {os.path.basename(doc_path)}")
 
     # Initialiser COM pour ce thread
     pythoncom.CoInitialize()
@@ -43,88 +66,25 @@ def _convert_with_word(doc_path: str, temp_dir: str) -> str:
         logging.info(f"[docx_processing] Conversion Word réussie: {docx_path}")
         return docx_path
 
-    finally:
-        if doc:
-            doc.Close(False)
-        if word:
-            word.Quit()
-        pythoncom.CoUninitialize()
-
-
-def _convert_with_libreoffice(doc_path: str, temp_dir: str) -> str:
-    """Convertit .doc → .docx avec LibreOffice."""
-    soffice_paths = [
-        "soffice",
-        "/usr/bin/soffice",
-        "/usr/bin/libreoffice",
-        r"C:\Program Files\LibreOffice\program\soffice.exe",
-        r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
-    ]
-
-    soffice_cmd = None
-    for path in soffice_paths:
-        if os.path.isfile(path) or shutil.which(path):
-            soffice_cmd = path
-            break
-
-    if not soffice_cmd:
-        raise RuntimeError("LibreOffice non trouvé")
-
-    cmd = [
-        soffice_cmd,
-        "--headless",
-        "--convert-to", "docx",
-        "--outdir", temp_dir,
-        doc_path
-    ]
-
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-
-    if result.returncode != 0:
-        raise RuntimeError(f"Erreur LibreOffice: {result.stderr}")
-
-    base_name = os.path.splitext(os.path.basename(doc_path))[0]
-    docx_path = os.path.join(temp_dir, f"{base_name}.docx")
-
-    if not os.path.isfile(docx_path):
-        raise RuntimeError(f"Fichier converti introuvable: {docx_path}")
-
-    logging.info(f"[docx_processing] Conversion LibreOffice réussie: {docx_path}")
-    return docx_path
-
-
-def convert_doc_to_docx(doc_path: str) -> str:
-    """
-    Convertit un fichier .doc en .docx.
-
-    Essaie d'abord Microsoft Word (Windows), puis LibreOffice en fallback.
-
-    Retourne le chemin vers le fichier .docx créé (dans un dossier temporaire).
-    Le fichier temporaire doit être supprimé par l'appelant après usage.
-    """
-    if not os.path.isfile(doc_path):
-        raise FileNotFoundError(f"Fichier introuvable: {doc_path}")
-
-    temp_dir = tempfile.mkdtemp(prefix="doc_convert_")
-
-    logging.info(f"[docx_processing] Conversion .doc → .docx: {os.path.basename(doc_path)}")
-
-    # Essayer d'abord Microsoft Word (Windows)
-    if os.name == 'nt':  # Windows
-        try:
-            return _convert_with_word(doc_path, temp_dir)
-        except Exception as e:
-            logging.warning(f"[docx_processing] Word non disponible: {e}")
-
-    # Fallback sur LibreOffice
-    try:
-        return _convert_with_libreoffice(doc_path, temp_dir)
     except Exception as e:
         shutil.rmtree(temp_dir, ignore_errors=True)
         raise RuntimeError(
-            f"Impossible de convertir {doc_path}. "
-            f"Installez Microsoft Word ou LibreOffice. Erreur: {e}"
+            f"Erreur lors de la conversion avec Word: {e}\n"
+            f"Vérifiez que Microsoft Word est installé et fonctionne."
         )
+
+    finally:
+        if doc:
+            try:
+                doc.Close(False)
+            except Exception:
+                pass
+        if word:
+            try:
+                word.Quit()
+            except Exception:
+                pass
+        pythoncom.CoUninitialize()
 
 
 def docx_to_text(docx_path):
@@ -154,7 +114,7 @@ def extract_text_from_docx(file_path: str) -> str:
     Extrait et nettoie le texte d'un fichier DOCX ou DOC.
 
     Pour les fichiers .doc (ancien format), convertit automatiquement en .docx
-    via LibreOffice avant extraction.
+    via Microsoft Word avant extraction (Windows uniquement).
 
     Args:
         file_path: Chemin vers le fichier .doc ou .docx
@@ -165,7 +125,7 @@ def extract_text_from_docx(file_path: str) -> str:
     ext = os.path.splitext(file_path)[1].lower()
 
     if ext == ".doc":
-        # Convertir .doc → .docx avec LibreOffice
+        # Convertir .doc → .docx avec Microsoft Word
         temp_docx = None
         try:
             temp_docx = convert_doc_to_docx(file_path)
