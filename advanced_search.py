@@ -55,27 +55,6 @@ Réponds UNIQUEMENT avec les variations, une par ligne, sans numérotation ni ex
 Génère {num_variations} variations de cette question pour améliorer la recherche:"""
 
     try:
-        # Vérifier si on doit utiliser le LLM local
-        try:
-            from models_utils import USE_LOCAL_MODELS, LOCAL_LLM_PATH, call_local_llm
-            if USE_LOCAL_MODELS and LOCAL_LLM_PATH:
-                _log.info("[QUERY-EXPAND] Utilisation du LLM LOCAL pour l'expansion...")
-                content = call_local_llm(
-                    system_prompt=system_prompt,
-                    user_prompt=user_prompt,
-                    max_tokens=300,
-                    temperature=0.7
-                )
-                if content:
-                    variations = [v.strip() for v in content.split("\n") if v.strip()]
-                    variations = [v for v in variations if len(v) > 10 and not v[0].isdigit()]
-                    queries.extend(variations[:num_variations])
-                _log.info(f"[QUERY-EXPAND] {len(queries)} requêtes générées avec LLM LOCAL")
-                return queries
-        except ImportError:
-            pass
-
-        # Fallback vers l'API
         url = api_base.rstrip("/") + "/chat/completions"
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -343,29 +322,6 @@ def rerank_with_bge(
     if not documents:
         return []
 
-    # Vérifier si un reranker local est disponible
-    try:
-        from models_utils import LOCAL_RERANKER_PATH, rerank_local
-        if LOCAL_RERANKER_PATH:
-            _log.info(f"[RERANK] Reranking {len(documents)} documents avec modèle LOCAL...")
-            try:
-                results = rerank_local(query, documents, top_k)
-                # Formater pour compatibilité avec le reste du code
-                reranked = []
-                for r in results:
-                    reranked.append({
-                        "index": r["index"],
-                        "score": r["score"],
-                        "document": r.get("text", documents[r["index"]] if r["index"] < len(documents) else "")
-                    })
-                _log.info(f"[RERANK] ✅ Reranking LOCAL terminé. Top score: {reranked[0]['score']:.3f}" if reranked else "[RERANK] ✅ Reranking terminé")
-                return reranked
-            except Exception as e:
-                _log.warning(f"[RERANK] ⚠️ Reranker local échoué, fallback vers API: {e}")
-    except ImportError:
-        pass
-
-    # Fallback vers l'API
     _log.info(f"[RERANK] Reranking {len(documents)} documents avec BGE Reranker API...")
 
     url = f"{BGE_RERANKER_API_BASE}{BGE_RERANKER_ENDPOINT}"

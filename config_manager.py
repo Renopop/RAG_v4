@@ -25,24 +25,16 @@ DEFAULT_CONFIG = {
     "csv_import_dir": r"N:\DA\SOC\RDA\ORG\DGT\POLE-SYSTEME\ENERGIE\RESERVE\PROP\Knowledge\IA_PROP\FAISS_DATABASE\CSV_Ingestion",
     "csv_export_dir": r"N:\DA\SOC\RDA\ORG\DGT\POLE-SYSTEME\ENERGIE\RESERVE\PROP\Knowledge\IA_PROP\FAISS_DATABASE\Fichiers_Tracking_CSV",
     "feedback_dir": r"N:\DA\SOC\RDA\ORG\DGT\POLE-SYSTEME\ENERGIE\RESERVE\PROP\Knowledge\IA_PROP\FAISS_DATABASE\Feedbacks",
-    # Chemins des modèles locaux (optionnels)
-    "local_embedding_path": r"D:\IA_Test\models\BAAI\bge-m3",
-    "local_llm_path": r"D:\IA_Test\models\Qwen\Qwen2.5-3B-Instruct",
-    "local_reranker_path": r"D:\IA_Test\models\BAAI\bge-reranker-v2-m3",
 }
 
 
 @dataclass
 class StorageConfig:
-    """Configuration des répertoires de stockage et modèles locaux."""
+    """Configuration des répertoires de stockage."""
     base_root_dir: str
     csv_import_dir: str
     csv_export_dir: str
     feedback_dir: str
-    # Chemins des modèles locaux (optionnels)
-    local_embedding_path: str = ""
-    local_llm_path: str = ""
-    local_reranker_path: str = ""
 
     def to_dict(self) -> Dict[str, str]:
         return asdict(self)
@@ -54,9 +46,6 @@ class StorageConfig:
             csv_import_dir=data.get("csv_import_dir", DEFAULT_CONFIG["csv_import_dir"]),
             csv_export_dir=data.get("csv_export_dir", DEFAULT_CONFIG["csv_export_dir"]),
             feedback_dir=data.get("feedback_dir", DEFAULT_CONFIG["feedback_dir"]),
-            local_embedding_path=data.get("local_embedding_path", DEFAULT_CONFIG["local_embedding_path"]),
-            local_llm_path=data.get("local_llm_path", DEFAULT_CONFIG["local_llm_path"]),
-            local_reranker_path=data.get("local_reranker_path", DEFAULT_CONFIG["local_reranker_path"]),
         )
 
 
@@ -266,37 +255,12 @@ def render_config_page_streamlit():
         help="Chemin absolu vers le dossier pour stocker les feedbacks utilisateurs"
     )
 
-    st.markdown("---")
-    st.subheader("🤖 Modèles locaux (optionnel)")
-    st.info("Laissez vide pour utiliser les APIs en ligne (Snowflake, DALLEM)")
-
-    new_local_embedding = st.text_input(
-        "Chemin du modèle d'embedding local",
-        value=config.local_embedding_path,
-        help="Ex: D:\\IA_Test\\models\\BAAI\\bge-m3"
-    )
-
-    new_local_llm = st.text_input(
-        "Chemin du modèle LLM local",
-        value=config.local_llm_path,
-        help="Ex: D:\\IA_Test\\models\\Qwen\\Qwen2.5-3B-Instruct"
-    )
-
-    new_local_reranker = st.text_input(
-        "Chemin du modèle reranker local",
-        value=config.local_reranker_path,
-        help="Ex: D:\\IA_Test\\models\\BAAI\\bge-reranker-v2-m3"
-    )
-
     # Créer une nouvelle configuration
     new_config = StorageConfig(
         base_root_dir=new_base_root,
         csv_import_dir=new_csv_import,
         csv_export_dir=new_csv_export,
         feedback_dir=new_feedback,
-        local_embedding_path=new_local_embedding,
-        local_llm_path=new_local_llm,
-        local_reranker_path=new_local_reranker,
     )
 
     # Afficher le statut de chaque répertoire
@@ -407,18 +371,3 @@ def get_csv_export_dir() -> str:
 def get_feedback_dir() -> str:
     """Retourne le répertoire des feedbacks."""
     return load_config().feedback_dir
-
-
-def get_local_embedding_path() -> str:
-    """Retourne le chemin du modèle d'embedding local."""
-    return load_config().local_embedding_path
-
-
-def get_local_llm_path() -> str:
-    """Retourne le chemin du modèle LLM local."""
-    return load_config().local_llm_path
-
-
-def get_local_reranker_path() -> str:
-    """Retourne le chemin du modèle reranker local."""
-    return load_config().local_reranker_path
