@@ -1429,19 +1429,24 @@ with tab_confluence:
             st.markdown("---")
             st.markdown("### 3️⃣ Configuration de l'ingestion")
 
-            col_base, col_collection = st.columns(2)
-            with col_base:
-                confluence_target_base = st.selectbox(
-                    "Base FAISS cible",
-                    options=bases if bases else ["(aucune base)"],
-                    help="Base où stocker le contenu Confluence"
-                )
-            with col_collection:
-                confluence_collection = st.text_input(
-                    "Nom de la collection",
-                    value=confluence_space_key.lower() if confluence_space_key else "",
-                    help="Nom de la collection (par défaut: clé de l'espace)"
-                )
+            # Base FAISS dédiée pour Confluence (créée automatiquement si nécessaire)
+            CONFLUENCE_BASE_NAME = "CONFLUENCE"
+            confluence_base_path = os.path.join(base_root, CONFLUENCE_BASE_NAME)
+
+            # Créer la base CONFLUENCE si elle n'existe pas
+            if not os.path.exists(confluence_base_path):
+                os.makedirs(confluence_base_path, exist_ok=True)
+                st.info(f"📁 Base FAISS '{CONFLUENCE_BASE_NAME}' créée automatiquement")
+
+            confluence_target_base = CONFLUENCE_BASE_NAME
+
+            st.info(f"📦 **Base FAISS dédiée** : `{CONFLUENCE_BASE_NAME}`")
+
+            confluence_collection = st.text_input(
+                "Nom de la collection",
+                value=confluence_space_key.lower() if confluence_space_key else "",
+                help="Nom de la collection (par défaut: clé de l'espace en minuscule)"
+            )
 
             # Options d'ingestion
             confluence_rebuild = st.checkbox(
@@ -1455,8 +1460,6 @@ with tab_confluence:
 
             can_ingest = (
                 confluence_space_key
-                and confluence_target_base
-                and confluence_target_base != "(aucune base)"
                 and confluence_collection
             )
 
