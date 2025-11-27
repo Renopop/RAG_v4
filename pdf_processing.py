@@ -23,6 +23,15 @@ except ImportError as e:
     fitz = None
     logging.error(f"Erreur lors de l'importation de PyMuPDF : {e}")
 
+# Pour l'extraction améliorée des tableaux
+try:
+    import pdfplumber
+    PDFPLUMBER_AVAILABLE = True
+    logging.info("pdfplumber importé avec succès")
+except ImportError:
+    PDFPLUMBER_AVAILABLE = False
+    logging.warning("pdfplumber non disponible - extraction des tableaux basique")
+
 # -----------------------------------------------------------------------------
 # Types
 # -----------------------------------------------------------------------------
@@ -143,6 +152,125 @@ def _extract_text_with_pymupdf(path: str) -> str:
         return "\n".join(pages_text)
     finally:
         doc.close()
+
+
+def _extract_with_pdfplumber(path: str) -> str:
+    """
+    Extraction PDF avec pdfplumber - meilleure gestion des tableaux.
+    Extrait le texte normal ET formate les tableaux en markdown.
+    """
+    if not PDFPLUMBER_AVAILABLE:
+        raise RuntimeError("pdfplumber non disponible")
+
+    logging.info(f"[pdf_processing] Extraction pdfplumber (tableaux) pour {path}")
+    all_content: List[str] = []
+
+    with pdfplumber.open(path) as pdf:
+        for page_num, page in enumerate(pdf.pages):
+            page_content: List[str] = []
+
+            # Détecter les tableaux sur la page
+            tables = page.extract_tables()
+
+            if tables:
+                # Page avec tableaux - extraire texte hors tableaux + tableaux formatés
+                # Récupérer les bounding boxes des tableaux
+                table_bboxes = []
+                for table in page.find_tables():
+                    table_bboxes.append(table.bbox)
+
+                # Extraire le texte en excluant les zones de tableaux
+                text_outside_tables = page.filter(
+                    lambda obj: not any(
+                        _is_inside_bbox(obj, bbox) for bbox in table_bboxes
+                    ) if hasattr(obj, 'x0') else True
+                ).extract_text() or ""
+
+                if text_outside_tables.strip():
+                    page_content.append(text_outside_tables.strip())
+
+                # Formater chaque tableau en markdown
+                for idx, table in enumerate(tables):
+                    if table and len(table) > 0:
+                        formatted_table = _format_table_as_markdown(table)
+                        if formatted_table:
+                            page_content.append(f"\n[TABLEAU {idx + 1}]\n{formatted_table}")
+            else:
+                # Pas de tableau - extraction normale
+                text = page.extract_text() or ""
+                if text.strip():
+                    page_content.append(text.strip())
+
+            if page_content:
+                all_content.append("\n".join(page_content))
+
+    result = "\n\n".join(all_content)
+    logging.info(f"[pdf_processing] pdfplumber: {len(result)} caractères extraits")
+    return result
+
+
+def _is_inside_bbox(obj, bbox) -> bool:
+    """Vérifie si un objet PDF est à l'intérieur d'une bounding box."""
+    if not hasattr(obj, 'x0') or not hasattr(obj, 'top'):
+        return False
+    x0, top, x1, bottom = bbox
+    return (obj.x0 >= x0 and getattr(obj, 'x1', obj.x0) <= x1 and
+            obj.top >= top and getattr(obj, 'bottom', obj.top) <= bottom)
+
+
+def _format_table_as_markdown(table: List[List]) -> str:
+    """
+    Formate un tableau extrait en format markdown/texte lisible.
+    """
+    if not table or len(table) == 0:
+        return ""
+
+    # Nettoyer les cellules (remplacer None par "", nettoyer les espaces)
+    cleaned_table = []
+    for row in table:
+        if row:
+            cleaned_row = []
+            for cell in row:
+                if cell is None:
+                    cleaned_row.append("")
+                else:
+                    # Nettoyer les retours à la ligne dans les cellules
+                    cleaned_row.append(str(cell).replace("\n", " ").strip())
+            cleaned_table.append(cleaned_row)
+
+    if not cleaned_table:
+        return ""
+
+    # Calculer la largeur max de chaque colonne
+    num_cols = max(len(row) for row in cleaned_table)
+    col_widths = [0] * num_cols
+
+    for row in cleaned_table:
+        for i, cell in enumerate(row):
+            if i < num_cols:
+                col_widths[i] = max(col_widths[i], len(cell))
+
+    # Formater en texte tabulé
+    lines = []
+    for row_idx, row in enumerate(cleaned_table):
+        # Compléter les colonnes manquantes
+        while len(row) < num_cols:
+            row.append("")
+
+        # Formater la ligne
+        formatted_cells = []
+        for i, cell in enumerate(row):
+            formatted_cells.append(cell.ljust(col_widths[i]))
+        line = " | ".join(formatted_cells)
+        lines.append(line)
+
+        # Ajouter une ligne de séparation après l'en-tête (première ligne)
+        if row_idx == 0:
+            separator = "-+-".join("-" * w for w in col_widths)
+            lines.append(separator)
+
+    return "\n".join(lines)
+
 
 # -----------------------------------------------------------------------------
 # Heuristiques de qualité du texte
@@ -310,68 +438,63 @@ def extract_text_from_pdf(
     Extraction texte robuste depuis un PDF en conservant les sauts de ligne.
 
     Stratégie :
-      1) tentative avec pdfminer
-      2) si erreur → fallback PyMuPDF
-      3) si pdfminer "réussit" mais texte suspect → tentative PyMuPDF et choix du meilleur
+      1) tentative avec pdfplumber (meilleure gestion des tableaux)
+      2) si erreur → fallback pdfminer
+      3) si texte suspect → fallback PyMuPDF et choix du meilleur
       4) nettoyage des headers/footers répétés
       5) nettoyage léger du bruit (watermarks récurrents, texte vertical très bruité)
     """
     if progress_cb:
         progress_cb(0.05, f"Ouverture PDF : {os.path.basename(path)}")
 
-    text_pdfminer: str = ""
-    used_fallback = False
+    text_final: str = ""
+    extraction_method: str = ""
 
-    # 1) Tentative pdfminer
-    try:
-        laparams = LAParams()
-        with open(path, "rb") as f:
-            # Utiliser la version simplifiée qui retourne directement une string
-            text_pdfminer = extract_text(f, laparams=laparams)
-        logging.info(f"[pdf_processing] Extraction pdfminer OK pour {path}")
-    except PDFPasswordIncorrect:
-        logging.error(f"[pdf_processing] PDF protégé par mot de passe : {path}")
-        raise
-    except Exception as e:
-        logging.error(f"[pdf_processing] Erreur pdfminer sur {path}: {e}")
-        text_pdfminer = ""
+    # 1) Tentative pdfplumber (meilleure gestion des tableaux)
+    if PDFPLUMBER_AVAILABLE:
+        try:
+            text_final = _extract_with_pdfplumber(path)
+            extraction_method = "pdfplumber"
+            logging.info(f"[pdf_processing] Extraction pdfplumber OK pour {path}")
+        except Exception as e:
+            logging.warning(f"[pdf_processing] Erreur pdfplumber sur {path}: {e}")
+            text_final = ""
 
-    # 2) Décider si l'on tente PyMuPDF (erreur ou texte suspect)
-    text_final: str = text_pdfminer or ""
-    need_fallback = False
+    # 2) Fallback pdfminer si pdfplumber a échoué ou n'est pas disponible
+    if not text_final or _is_text_suspect(text_final):
+        try:
+            laparams = LAParams()
+            with open(path, "rb") as f:
+                text_pdfminer = extract_text(f, laparams=laparams)
 
-    if not text_pdfminer:
-        need_fallback = True
-        logging.info("[pdf_processing] Aucun texte pdfminer — tentative fallback PyMuPDF.")
-    else:
-        if _is_text_suspect(text_pdfminer):
-            need_fallback = True
-            logging.info("[pdf_processing] Texte pdfminer suspect — tentative fallback PyMuPDF.")
+            if text_pdfminer and len(text_pdfminer) > len(text_final or ""):
+                text_final = text_pdfminer
+                extraction_method = "pdfminer"
+                logging.info(f"[pdf_processing] Extraction pdfminer OK pour {path}")
+        except PDFPasswordIncorrect:
+            logging.error(f"[pdf_processing] PDF protégé par mot de passe : {path}")
+            raise
+        except Exception as e:
+            logging.warning(f"[pdf_processing] Erreur pdfminer sur {path}: {e}")
 
-    if need_fallback:
+    # 3) Fallback PyMuPDF si texte toujours suspect ou vide
+    if not text_final or _is_text_suspect(text_final):
         try:
             text_pymupdf = _extract_text_with_pymupdf(path)
-            used_fallback = True
 
-            # Heuristique simple : garder la version la plus "riche"
-            len_pdfminer = len(text_pdfminer or "")
-            len_pymupdf = len(text_pymupdf or "")
-            if len_pymupdf > max(len_pdfminer, 0) * 1.1:  # 10% de texte en plus
+            if text_pymupdf and len(text_pymupdf) > len(text_final or "") * 1.1:
                 logging.info(
-                    f"[pdf_processing] Texte PyMuPDF choisi (len={len_pymupdf}) "
-                    f"vs pdfminer (len={len_pdfminer})."
+                    f"[pdf_processing] Texte PyMuPDF choisi (len={len(text_pymupdf)}) "
+                    f"vs {extraction_method} (len={len(text_final or '')})."
                 )
                 text_final = text_pymupdf
-            elif not text_pdfminer:
+                extraction_method = "pymupdf"
+            elif not text_final:
                 text_final = text_pymupdf
-            else:
-                logging.info(
-                    "[pdf_processing] Texte pdfminer conservé malgré fallback "
-                    f"(len_pdfminer={len(text_pdfminer)}, len_pymupdf={len(text_pymupdf)})."
-                )
+                extraction_method = "pymupdf"
         except Exception as e2:
             logging.error(f"[pdf_processing] Fallback PyMuPDF échoué pour {path}: {e2}")
-            if not text_pdfminer:
+            if not text_final:
                 raise
 
     # Normalisation minimale des fins de ligne
@@ -393,7 +516,8 @@ def extract_text_from_pdf(
         text_final = text_final.strip()
 
     if progress_cb:
-        progress_cb(1.0, "Lecture PDF terminée" + (" (fallback PyMuPDF)" if used_fallback else ""))
+        method_info = f" (via {extraction_method})" if extraction_method else ""
+        progress_cb(1.0, f"Lecture PDF terminée{method_info}")
 
     return text_final
 
