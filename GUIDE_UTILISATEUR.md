@@ -154,13 +154,15 @@ Indexez vos documents dans FAISS pour pouvoir les interroger.
 
 | Format | Parser principal | Fallback | Fonctionnalités |
 |--------|-----------------|----------|-----------------|
-| **PDF** | pdfminer.six | PyMuPDF | Pièces jointes, nettoyage Unicode |
-| **DOCX/DOC** | python-docx | - | Tables, sections, paragraphes |
+| **PDF** | pdfplumber | pdfminer.six → PyMuPDF | **Tableaux**, pièces jointes, nettoyage Unicode |
+| **DOCX** | python-docx | - | Tables, sections, paragraphes |
+| **DOC** | - | - | ⚠️ Non supporté (convertir en .docx) |
 | **XML** | ElementTree | - | Patterns EASA (CS, AMC, GM) |
 | **TXT/MD** | Lecture native | - | Détection encodage auto |
 | **CSV** | Lecture native | - | Extraction texte brut |
 
 **Fonctionnalités d'extraction :**
+- **Extraction tableaux PDF** : Détection et formatage en markdown avec pdfplumber
 - **Extraction pièces jointes PDF** : Détection récursive des fichiers attachés
 - **Multi-encodage** : UTF-8, UTF-16, Latin-1, ISO-8859-1, CP1252
 - **Nettoyage Unicode** : Suppression automatique des caractères surrogates
@@ -441,8 +443,9 @@ Visualisez les statistiques et tendances des retours utilisateurs.
 - Métriques : termes techniques, ratio numérique, longueur phrases
 
 **Q : Quels formats de documents sont supportés ?**
-- **PDF** : pdfminer.six + PyMuPDF fallback + extraction pièces jointes
-- **DOCX/DOC** : python-docx avec extraction tables et sections
+- **PDF** : pdfplumber (tableaux) + pdfminer.six + PyMuPDF fallback + pièces jointes
+- **DOCX** : python-docx avec extraction tables et sections
+- **DOC** : ⚠️ Non supporté (convertir en .docx avec Word/LibreOffice)
 - **XML** : Parser EASA configurable (CS, AMC, GM, CS-E, CS-APU)
 - **TXT/MD/CSV** : Lecture native avec détection encodage
 
@@ -503,31 +506,41 @@ Pour toute question ou problème, contactez l'équipe de développement RaGME_UP
 
 ---
 
-## 🆕 Nouveautés de cette version (v1.3)
+## 🆕 Nouveautés de cette version (v1.4)
 
-### 🧠 Chunking Adaptatif Intelligent (NOUVEAU)
+### 📊 Extraction de tableaux PDF (NOUVEAU)
+- 📋 **pdfplumber** : détection automatique des tableaux dans les PDF
+- 📝 **Formatage markdown** : tableaux formatés avec colonnes alignées
+- 🔄 **Triple fallback** : pdfplumber → pdfminer.six → PyMuPDF
+
+### ⚡ Améliorations de performance (NOUVEAU)
+- 🚀 **Cache Streamlit** : réponses instantanées pour requêtes répétées (30 min)
+- 📦 **BATCH_SIZE optimisé** : 32 (équilibre performance/sécurité)
+- 🔒 **Troncature automatique** : textes > 28000 chars tronqués (limite Snowflake)
+- 💾 **Cache FAISS** : stores cachés 10 min pour chargement rapide
+
+### 🌐 APIs uniquement
+- ✅ **Snowflake** : embeddings (snowflake-arctic-embed-l-v2.0)
+- ✅ **DALLEM** : génération de réponses (dallem-val)
+- ✅ **BGE Reranker** : re-ranking intelligent (bge-reranker-v2-m3)
+- ❌ Modèles locaux supprimés (simplification)
+
+### 🧠 Chunking Adaptatif Intelligent
 - 📊 **Analyse de densité** : détection automatique du type de contenu
 - 📏 **Taille adaptative** : 800-2000 caractères selon densité
 - 🏷️ **Augmentation sémantique** : mots-clés, phrases clés, références
 - 🔗 **Références croisées** : détection CS, AMC, GM, FAR, JAR
-- 🔍 **Expansion de contexte** : chunks voisins et sections référencées
 
-### 📄 Parsing Multi-Format (NOUVEAU)
-- **PDF** : pdfminer.six + PyMuPDF fallback + pièces jointes
+### 📄 Parsing Multi-Format
+- **PDF** : pdfplumber (tableaux) + pdfminer.six + PyMuPDF + pièces jointes
 - **DOCX** : python-docx avec tables, sections, paragraphes
+- **DOC** : ⚠️ Non supporté (convertir en .docx)
 - **XML** : Parser EASA configurable (CS, AMC, GM, CS-E, CS-APU)
-- **Multi-encodage** : UTF-8, UTF-16, Latin-1, ISO-8859-1, CP1252
 
-### 📝 Système de feedback utilisateur simplifié
+### 📝 Système de feedback utilisateur
 - 👍👎 **Feedback rapide** : un simple clic pouce haut ou pouce bas
 - 💡 **Réponse attendue** : champ pour indiquer la réponse souhaitée si 👎
 - 📊 **Tableau de bord** : taux de satisfaction et questions problématiques
-- 🔟 **10 sources affichées** : plus de contexte pour chaque réponse
-
-### 🔄 Re-ranking intelligent
-- 🎯 **Amélioration par feedbacks** : apprentissage à partir des 👍 et 👎
-- 🔍 **Questions similaires** : utilisation des feedbacks de questions passées
-- ⚙️ **Option activable** : checkbox "Utiliser les retours utilisateurs"
 
 ### FAISS
 - ✨ **FAISS** pour une meilleure compatibilité réseau Windows
@@ -535,23 +548,11 @@ Pour toute question ou problème, contactez l'équipe de développement RaGME_UP
 - 🌐 **Compatible réseau** : pas de problèmes de verrous
 - 💾 **Auto-save** : sauvegarde après chaque ajout
 
-### Extraction PDF robuste
-- 🔧 **Gestion Unicode** : caractères surrogates nettoyés automatiquement
-- 📎 **Pièces jointes** : extraction et ingestion automatiques
-- 🧵 **Threads** : traitement parallèle sans crashes Windows
-- ✅ **Extensions préservées** : .pdf, .docx, etc. correctement conservés
-
 ### Corrections critiques
-- 🐛 Fix validation longueurs dans FAISS (chunks perdus)
-- 🐛 Fix clean_filename() pour préserver extensions
-- 🐛 Fix multiprocessing Windows + PyMuPDF (MemoryError)
+- 🐛 Fix erreur pdfminer StringIO (encode)
+- 🐛 Fix erreur token limit Snowflake (8192 max)
+- 🐛 Fix validation longueurs dans FAISS
 - 🐛 Fix caractères surrogates dans noms de fichiers
-
-### Amélioration technique
-- 🔄 PyMuPDF fallback pour extraction PDF robuste
-- 💾 Persistance des résultats RAG
-- 🎯 Interface optimisée pour partages réseau
-- 📝 Code nettoyé et optimisé
 
 ---
 

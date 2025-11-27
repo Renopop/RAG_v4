@@ -330,7 +330,8 @@ Les logs sont créés localement sur chaque poste :
 - `rag_da_debug.log` (dans le dossier de l'application)
 
 Logs détaillés pour :
-- Extraction PDF (pdfminer + PyMuPDF fallback)
+- Extraction PDF (pdfplumber + pdfminer + PyMuPDF fallback)
+- Extraction tableaux (détection et formatage)
 - Traitement Unicode/surrogates
 - Ingestion FAISS (chunks ajoutés)
 - Erreurs réseau éventuelles
@@ -401,11 +402,11 @@ Si `requirements.txt` a changé :
    → Sélectionner base + collection → Taper question
    → Sources cliquables avec bouton "Ouvrir"
 
-NOUVEAUTÉS :
+NOUVEAUTÉS v1.4 :
 ✅ FAISS = compatible réseau Windows
-✅ Recherche rapide
-✅ Extraction pièces jointes PDF automatique
-✅ Gestion caractères Unicode complexes
+✅ Extraction tableaux PDF (pdfplumber)
+✅ Cache Streamlit (requêtes répétées instantanées)
+✅ APIs uniquement (Snowflake, DALLEM, BGE Reranker)
 
 Aide : GUIDE_UTILISATEUR.md
 ```

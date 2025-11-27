@@ -57,7 +57,7 @@ RaGME_UP PROP est un système RAG (Retrieval-Augmented Generation) conçu pour l
 ┌─────────────────────────────────────────────────────────────────┐
 │                    EMBEDDINGS & STOCKAGE                         │
 │  models_utils.py | faiss_store.py                               │
-│  - Snowflake Arctic (1024 dims) ou modèles locaux               │
+│  - Snowflake Arctic API (1024 dims)                             │
 │  - FAISS index par collection                                   │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -129,7 +129,7 @@ Fichiers sources (PDF, DOCX, XML, TXT, CSV)
                  ▼
 ┌─────────────────────────────────────────┐
 │  2. PARSING PAR FORMAT                  │
-│  - PDF: pdfminer.six + PyMuPDF fallback │
+│  - PDF: pdfplumber (tableaux) + fallbacks│
 │  - DOCX: python-docx                    │
 │  - XML: ElementTree + patterns EASA     │
 │  - TXT/MD/CSV: lecture native           │
@@ -179,8 +179,8 @@ Fichiers sources (PDF, DOCX, XML, TXT, CSV)
                  ▼
 ┌─────────────────────────────────────────┐
 │  7. EMBEDDING                           │
-│  Snowflake Arctic (1024 dims)           │
-│  ou modèle local                        │
+│  Snowflake Arctic API (1024 dims)       │
+│  Batch size: 32, max 28000 chars/texte  │
 └────────────────┬────────────────────────┘
                  │
                  ▼
@@ -472,29 +472,25 @@ def expand_search_results(
 
 ### Parser PDF (`pdf_processing.py`)
 
-**Architecture à double fallback :**
+**Architecture à triple fallback avec extraction de tableaux :**
 
 ```python
-def extract_text_and_attachments(pdf_path: str) -> Tuple[str, List[dict]]:
+def extract_text_from_pdf(pdf_path: str) -> str:
     """
-    Extraction principale avec pdfminer.six.
-    Fallback automatique vers PyMuPDF si échec.
+    Extraction robuste avec détection de tableaux.
+    Ordre: pdfplumber → pdfminer.six → PyMuPDF
 
-    Retourne:
-    (
-        "texte extrait complet",
-        [
-            {'name': 'attachment.pdf', 'content': bytes, 'text': '...'},
-            ...
-        ]
-    )
+    Les tableaux sont formatés en markdown avec alignement.
     """
+
+def _extract_with_pdfplumber(path: str) -> str:
+    """Extraction via pdfplumber (principal, avec tableaux)"""
 
 def _extract_text_with_pdfminer(path: str) -> str:
-    """Extraction via pdfminer.six (principal)"""
+    """Extraction via pdfminer.six (fallback 1)"""
 
 def _extract_text_with_pymupdf(path: str) -> str:
-    """Extraction via PyMuPDF (fallback)"""
+    """Extraction via PyMuPDF (fallback 2)"""
 
 def extract_attachments(pdf_path: str) -> List[dict]:
     """Extraction récursive des pièces jointes"""
@@ -659,7 +655,7 @@ Question utilisateur
         ▼
 ┌───────────────────────────────┐
 │  1. EXPANSION DE REQUÊTE      │
-│  (optionnel, via LLM local)   │
+│  (optionnel, via DALLEM API)  │
 │  - Synonymes                  │
 │  - Reformulations             │
 └───────────────┬───────────────┘
@@ -667,7 +663,7 @@ Question utilisateur
                 ▼
 ┌───────────────────────────────┐
 │  2. EMBEDDING                 │
-│  Snowflake Arctic ou local    │
+│  Snowflake Arctic API         │
 └───────────────┬───────────────┘
                 │
                 ▼
@@ -688,13 +684,13 @@ Question utilisateur
 ┌───────────────────────────────┐
 │  5. RE-RANKING (optionnel)    │
 │  - Feedbacks utilisateurs     │
-│  - Cross-encoder local        │
+│  - BGE Reranker API           │
 └───────────────┬───────────────┘
                 │
                 ▼
 ┌───────────────────────────────┐
 │  6. GÉNÉRATION RÉPONSE        │
-│  DALLEM ou LLM local          │
+│  DALLEM API                   │
 │  Prompt + contexte            │
 └───────────────────────────────┘
 ```
@@ -745,10 +741,7 @@ def query_rag(
   "base_root_dir": "C:\\Data\\FAISS_DATABASE\\BaseDB",
   "csv_import_dir": "C:\\Data\\FAISS_DATABASE\\CSV_Ingestion",
   "csv_export_dir": "C:\\Data\\FAISS_DATABASE\\CSV_Tracking",
-  "feedback_dir": "C:\\Data\\FAISS_DATABASE\\Feedbacks",
-  "local_embedding_path": "",
-  "local_llm_path": "",
-  "local_reranker_path": ""
+  "feedback_dir": "C:\\Data\\FAISS_DATABASE\\Feedbacks"
 }
 ```
 
@@ -761,9 +754,6 @@ class StorageConfig:
     csv_import_dir: str
     csv_export_dir: str
     feedback_dir: str
-    local_embedding_path: str = ""
-    local_llm_path: str = ""
-    local_reranker_path: str = ""
 
 def load_config() -> StorageConfig:
     """Charge config.json ou retourne valeurs par défaut"""
@@ -782,47 +772,46 @@ def validate_all_directories(config: StorageConfig) -> dict:
 
 ## API et modèles
 
+Le système utilise exclusivement des APIs externes pour les modèles d'IA.
+
 ### Embeddings (`models_utils.py`)
 
 ```python
+# Configuration
+EMBED_MODEL = "snowflake-arctic-embed-l-v2.0"
+BATCH_SIZE = 32  # Équilibre performance/sécurité
+MAX_CHARS_PER_TEXT = 28000  # Limite ~7000 tokens (Snowflake max: 8192)
+
 # Snowflake Arctic (API)
-def get_embedding_snowflake(text: str) -> np.ndarray:
-    """Embedding 1024 dimensions via API Snowflake"""
+class DirectOpenAIEmbeddings:
+    """Client embeddings via API Snowflake (1024 dimensions)"""
 
-# Modèle local
-def get_embedding_local(text: str, model_path: str) -> np.ndarray:
-    """Embedding via SentenceTransformers local"""
-
-# Détection automatique
-def get_embedding(text: str, config: StorageConfig = None) -> np.ndarray:
-    """Utilise local si configuré, sinon Snowflake"""
+def embed_in_batches(texts, role, batch_size, emb_client, log) -> np.ndarray:
+    """
+    Embedding par batch avec troncature automatique.
+    Les textes > 28000 chars sont tronqués pour éviter les erreurs de tokens.
+    """
 ```
 
 ### LLM pour génération
 
 ```python
 # DALLEM (API)
-def generate_dallem(prompt: str, context: str) -> str:
-    """Génération via API DALLEM"""
+LLM_MODEL = "dallem-val"
 
-# Local (HuggingFace)
-def generate_local(prompt: str, context: str, model_path: str) -> str:
-    """Génération via transformers local"""
+def call_dallem_chat(http_client, question, context, log) -> str:
+    """Génération via API DALLEM avec retry automatique"""
 ```
 
 ### Reranker
 
 ```python
-def rerank_results(
-    query: str,
-    results: List[dict],
-    model_path: str = None
-) -> List[dict]:
-    """
-    Re-ranking via:
-    - Cross-encoder local (sentence-transformers)
-    - ou feedbacks utilisateurs
-    """
+# BGE Reranker (API)
+BGE_RERANKER_API_BASE = "https://api.dev.dassault-aviation.pro/bge-reranker-v2-m3"
+BGE_RERANKER_ENDPOINT = "/v1/rerank"
+
+def rerank_with_bge(query: str, documents: List[str], top_k: int) -> List[dict]:
+    """Re-ranking via API BGE Reranker"""
 ```
 
 ---
@@ -839,15 +828,18 @@ customtkinter>=5.2.0
 # FAISS
 faiss-cpu>=1.7.4
 
-# Parsing
+# Parsing PDF (avec extraction tableaux)
 pdfminer.six>=20221105
 pymupdf>=1.24.0
+pdfplumber>=0.10.0  # Extraction améliorée des tableaux
 python-docx>=0.8.11
+
+# Traitement texte
 langdetect>=1.0.9
 chardet>=5.1.0
 unidecode>=1.3.6
 
-# API
+# API (Snowflake, DALLEM, BGE Reranker)
 openai>=1.0.0
 httpx>=0.24.0
 requests>=2.31.0
@@ -855,15 +847,6 @@ requests>=2.31.0
 # Core
 numpy>=1.24.0
 packaging>=23.0
-
-# Modèles locaux (optionnel)
-torch>=2.0.0
-sentence-transformers>=2.2.0
-transformers>=4.35.0
-accelerate>=0.25.0
-safetensors>=0.4.0
-sentencepiece>=0.1.99
-huggingface_hub>=0.19.0
 ```
 
 ### Bibliothèques natives Python utilisées
@@ -908,5 +891,5 @@ logging.basicConfig(
 
 ---
 
-**Version:** 1.3
+**Version:** 1.4
 **Dernière mise à jour:** 2025-11-27

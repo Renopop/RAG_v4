@@ -216,29 +216,35 @@ Le système supporte l'extraction de texte depuis de multiples formats de docume
 
 | Format | Bibliothèque principale | Fallback | Fonctionnalités spéciales |
 |--------|------------------------|----------|---------------------------|
-| **PDF** | pdfminer.six | PyMuPDF (fitz) | Extraction pièces jointes, nettoyage Unicode |
+| **PDF** | pdfplumber | pdfminer.six → PyMuPDF | **Extraction tableaux**, pièces jointes, nettoyage Unicode |
 | **DOCX** | python-docx | - | Tables, sections, paragraphes |
-| **DOC** | python-docx | - | Support basique |
+| **DOC** | - | - | ⚠️ Non supporté (convertir en .docx) |
 | **XML** | xml.etree.ElementTree | - | Patterns EASA configurables |
 | **TXT/MD** | Lecture native | - | Détection encodage |
 | **CSV** | Lecture native | - | Extraction texte brut |
 
 ### Parser PDF (`pdf_processing.py`)
 
-Le parser PDF est le plus sophistiqué avec une architecture à double fallback :
+Le parser PDF est le plus sophistiqué avec une architecture à triple fallback et extraction de tableaux :
 
 ```
 PDF Input
     │
     ▼
 ┌─────────────────────────┐
-│  pdfminer.six           │  ← Extraction principale
-│  (extraction texte)     │
+│  pdfplumber             │  ← Extraction principale (tableaux)
+│  (texte + tableaux)     │
 └──────────┬──────────────┘
-           │ Échec?
+           │ Échec ou texte suspect?
            ▼
 ┌─────────────────────────┐
-│  PyMuPDF (fitz)         │  ← Fallback robuste
+│  pdfminer.six           │  ← Fallback 1
+│  (extraction texte)     │
+└──────────┬──────────────┘
+           │ Échec ou texte suspect?
+           ▼
+┌─────────────────────────┐
+│  PyMuPDF (fitz)         │  ← Fallback 2 robuste
 │  (extraction fallback)  │
 └──────────┬──────────────┘
            │
@@ -256,6 +262,7 @@ PDF Input
 ```
 
 **Fonctionnalités clés :**
+- **Extraction tableaux** : pdfplumber détecte et formate les tableaux en markdown
 - **Extraction pièces jointes** : Détecte et extrait récursivement les PDF/fichiers attachés
 - **Gestion Unicode** : Nettoyage automatique des caractères surrogates
 - **Multi-encodage** : Détection automatique (UTF-8, UTF-16, Latin-1, ISO-8859-1, CP1252)
@@ -362,10 +369,7 @@ L'application nécessite plusieurs répertoires de stockage. Au premier lancemen
   "base_root_dir": "C:\\Data\\FAISS_DATABASE\\BaseDB",
   "csv_import_dir": "C:\\Data\\FAISS_DATABASE\\CSV_Ingestion",
   "csv_export_dir": "C:\\Data\\FAISS_DATABASE\\CSV_Tracking",
-  "feedback_dir": "C:\\Data\\FAISS_DATABASE\\Feedbacks",
-  "local_embedding_path": "",
-  "local_llm_path": "",
-  "local_reranker_path": ""
+  "feedback_dir": "C:\\Data\\FAISS_DATABASE\\Feedbacks"
 }
 ```
 
@@ -416,7 +420,7 @@ adapted_chunk_size = _get_adaptive_chunk_size(
 
 - Python 3.8 ou supérieur
 - Windows 10/11 (ou Linux/macOS avec adaptations)
-- Accès réseau pour API Snowflake et DALLEM (ou mode test local)
+- Accès réseau aux APIs : Snowflake (embeddings), DALLEM (LLM), BGE Reranker
 
 ---
 
@@ -429,5 +433,5 @@ Consultez la documentation pour toute question :
 
 ---
 
-**Version:** 1.3
+**Version:** 1.4
 **Dernière mise à jour:** 2025-11-27
