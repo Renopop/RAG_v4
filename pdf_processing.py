@@ -826,16 +826,16 @@ def extract_attachments_from_pdf(
         pdf_without_path = os.path.join(output_dir, f"{base_root}_sans_pj{base_ext}")
         _create_pdf_without_attachments(doc, pdf_without_path)
 
-        # 2) Extraction des fichiers embarqués + annotations FileAttachment
+        # 2) Extraction des fichiers embarqués uniquement (pas les annotations)
         attachments_paths.extend(_extract_embedded_files(doc, output_dir))
-        attachments_paths.extend(_extract_file_attachment_annots(doc, output_dir))
+        # Note: _extract_file_attachment_annots() désactivé (annotations = icônes trombones)
 
     finally:
         doc.close()
 
     if not attachments_paths:
         logging.info(
-            "[pdf_processing] No attachments found (embedded files or file-attachment annotations)."
+            "[pdf_processing] No embedded files found in PDF."
         )
 
     return {
