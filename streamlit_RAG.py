@@ -1051,6 +1051,7 @@ with tab_ingest:
     
                                 # --- Extraction des pièces jointes des PDF listés dans le CSV ---
                                 temp_dirs_to_cleanup = []  # Liste des répertoires temporaires à nettoyer
+                                parent_paths = {}  # Dict {chemin_pj: chemin_fichier_parent} pour le bouton Ouvrir
                                 if extract_attachments_from_pdf is not None:
                                     progress(0.10, f"[{base_name}/{group_name}] Analyse des pièces jointes PDF…")
                                     original_pdf_paths = [p for p in new_paths if p.lower().endswith(".pdf")]
@@ -1114,6 +1115,8 @@ with tab_ingest:
                                             # Pour ingestion RAG, on utilise le chemin réel,
                                             # mais on associe un chemin logique pour le CSV / ref_id
                                             logical_paths[att_path] = csv_path_for_attachment
+                                            # Stocker le fichier parent pour le bouton "Ouvrir"
+                                            parent_paths[att_path] = pdf_path
                                             new_paths.append(att_path)
                                             # Pour la traçabilité CSV, on stocke le chemin logique demandé
                                             ingested_entries.append((base_name, group_name, csv_path_for_attachment))
@@ -1155,6 +1158,7 @@ with tab_ingest:
                                         rebuild=False,
                                         log=logger,
                                         logical_paths=logical_paths,
+                                        parent_paths=parent_paths,
                                         progress_callback=progress,
                                         xml_configs=xml_configs_for_ingestion,
                                     )
@@ -1521,17 +1525,26 @@ def render_sources_list(
         with st.expander(header):
             # Afficher le chemin complet du fichier
             file_path = src.get("path", "")
+            is_attachment = src.get("is_attachment", False)
+            parent_file = src.get("parent_file", "")
+
             if file_path:
-                st.markdown(f"**Source** : `{file_path}`")
+                # Afficher la source avec indication si c'est une pièce jointe
+                if is_attachment and parent_file:
+                    st.markdown(f"**Source** : `{file_path}` *(pièce jointe)*")
+                    st.markdown(f"**Fichier parent** : `{parent_file}`")
+                else:
+                    st.markdown(f"**Source** : `{file_path}`")
 
                 # Bouton pour ouvrir le fichier (utilise un callback pour éviter le rerun)
-                # Utiliser un hash du chemin complet pour garantir l'unicité
-                file_hash = hashlib.md5(file_path.encode()).hexdigest()[:8]
+                # Pour les pièces jointes, ouvrir le fichier parent
+                file_to_open = parent_file if (is_attachment and parent_file) else file_path
+                file_hash = hashlib.md5(file_to_open.encode()).hexdigest()[:8]
                 st.button(
                     f"📂 Ouvrir",
                     key=f"open_{i}_{file_hash}",
                     on_click=open_file_callback,
-                    args=(file_path,)
+                    args=(file_to_open,)
                 )
 
             section_id = src.get("section_id") or ""

@@ -142,6 +142,7 @@ def ingest_documents(
     rebuild: bool = False,
     log=None,
     logical_paths: Optional[Dict[str, str]] = None,
+    parent_paths: Optional[Dict[str, str]] = None,
     progress_callback: Optional[callable] = None,
     xml_configs: Optional[Dict[str, XMLParseConfig]] = None,
 ) -> Dict[str, Any]:
@@ -155,6 +156,8 @@ def ingest_documents(
       - add to FAISS
 
     Args:
+        logical_paths: Dict optionnel {chemin_réel: chemin_logique} pour le CSV de tracking
+        parent_paths: Dict optionnel {chemin_pièce_jointe: chemin_fichier_parent} pour les PJ
         xml_configs: Dict optionnel {chemin_fichier: XMLParseConfig} pour les fichiers XML
 
     Returns a small report with total_chunks and per-file info.
@@ -256,11 +259,15 @@ def ingest_documents(
     # ------------------------------------------------------------------
     def _chunk_single_file(args):
         """Worker pour chunker un seul fichier en parallèle."""
-        path, file_data, use_easa, chunk_sz, log_paths = args
+        path, file_data, use_easa, chunk_sz, log_paths, par_paths = args
 
         text = file_data["text"]
         language = file_data["language"]
         base_name = os.path.basename(path)
+
+        # Déterminer si c'est une pièce jointe et quel est le fichier parent
+        parent_file = par_paths.get(path) if par_paths else None
+        is_attachment = parent_file is not None
 
         chunks_list = []
         metas_list = []
@@ -323,6 +330,8 @@ def ingest_documents(
                 metas_list.append({
                     "source_file": base_name,
                     "path": log_paths.get(path, path) if log_paths else path,
+                    "parent_file": parent_file,
+                    "is_attachment": is_attachment,
                     "chunk_id": chunk_id,
                     "section_id": sec_id,
                     "section_kind": sec_kind,
@@ -378,6 +387,8 @@ def ingest_documents(
                 metas_list.append({
                     "source_file": base_name,
                     "path": log_paths.get(path, path) if log_paths else path,
+                    "parent_file": parent_file,
+                    "is_attachment": is_attachment,
                     "chunk_id": chunk_id,
                     "section_id": header[:50] if header else "",
                     "section_kind": smart_chunk.get("type", ""),
@@ -410,7 +421,7 @@ def ingest_documents(
 
     # Préparer les arguments pour chaque fichier
     chunking_args = [
-        (path, loaded_files[path], use_easa_sections, chunk_size, logical_paths)
+        (path, loaded_files[path], use_easa_sections, chunk_size, logical_paths, parent_paths)
         for path in file_paths if path in loaded_files
     ]
 
