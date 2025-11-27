@@ -77,6 +77,7 @@ RAG_v3/
 ├── docx_processing.py        # Parser DOCX (3.4 KB)
 ├── xml_processing.py         # Parser XML EASA (11 KB)
 ├── csv_processing.py         # Parser CSV (0.7 KB)
+├── confluence_processing.py  # API Confluence (9 KB)
 │
 ├── # === CHUNKING ===
 ├── chunking.py               # Chunking adaptatif (64 KB, 1865 lignes)
@@ -581,6 +582,84 @@ def extract_text_recursive(element, excluded_tags: List[str] = None) -> str:
     """Extraction texte récursive avec gestion namespaces"""
 ```
 
+### API Confluence (`confluence_processing.py`)
+
+```python
+def test_confluence_connection(
+    base_url: str,
+    username: str,
+    password: str,
+) -> Dict[str, Any]:
+    """
+    Teste la connexion à Confluence.
+    Retourne: {'success': bool, 'message': str, 'user_info': dict}
+    """
+
+def list_spaces(
+    base_url: str,
+    username: str,
+    password: str,
+) -> List[Dict[str, str]]:
+    """
+    Liste tous les espaces accessibles.
+    Retourne: [{'key': 'PROJ', 'name': '...', 'type': '...'}, ...]
+    """
+
+def get_space_pages(
+    base_url: str,
+    space_key: str,
+    username: str,
+    password: str,
+    progress_cb: Optional[Callable] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Récupère toutes les pages d'un espace avec pagination.
+    Retourne: [{'id': '...', 'title': '...', 'url': '...', 'html_content': '...'}, ...]
+    """
+
+def extract_text_from_confluence_space(
+    base_url: str,
+    space_key: str,
+    username: str,
+    password: str,
+    progress_cb: Optional[Callable] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Pipeline complet: extraction pages + conversion HTML → texte.
+    Retourne: [{'id': '...', 'title': '...', 'url': '...', 'text': '...'}, ...]
+    """
+```
+
+**Fonctionnalités :**
+- Support Confluence Cloud (atlassian.net) et Server
+- Pagination automatique (25 pages/requête)
+- Conversion HTML → texte avec BeautifulSoup
+- Préservation structure (headers, listes, tableaux)
+- URL de page comme chemin logique
+
+**Architecture de connexion :**
+```
+┌─────────────────────────────┐
+│  Détection type Confluence  │
+│  (Cloud vs Server)          │
+└──────────────┬──────────────┘
+               │
+    ┌──────────┴──────────┐
+    ▼                     ▼
+┌─────────────┐    ┌─────────────┐
+│   Cloud     │    │   Server    │
+│ /wiki/rest/ │    │ /rest/api   │
+└──────┬──────┘    └──────┬──────┘
+       │                  │
+       └────────┬─────────┘
+                │
+                ▼
+┌─────────────────────────────┐
+│  API REST Confluence        │
+│  (Basic Auth)               │
+└─────────────────────────────┘
+```
+
 ---
 
 ## Stockage vectoriel FAISS
@@ -851,6 +930,7 @@ pywin32>=306       # Conversion .doc → .docx via Word (Windows)
 langdetect>=1.0.9
 chardet>=5.1.0
 unidecode>=1.3.6
+beautifulsoup4>=4.12.0  # Parsing HTML (Confluence)
 
 # API (Snowflake, DALLEM, BGE Reranker)
 openai>=1.0.0
@@ -904,5 +984,5 @@ logging.basicConfig(
 
 ---
 
-**Version:** 1.4
+**Version:** 1.5
 **Dernière mise à jour:** 2025-11-27
