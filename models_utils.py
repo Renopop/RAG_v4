@@ -25,7 +25,7 @@ LLM_MODEL = "dallem-val"
 EMBED_MODEL = "snowflake-arctic-embed-l-v2.0"
 BATCH_SIZE = 32  # taille batch embeddings (équilibre performance/sécurité)
 MAX_CHARS_PER_TEXT = 28000  # ~7000 tokens max par texte (limite Snowflake: 8192 tokens)
-PARALLEL_EMBEDDING_WORKERS = min(4, multiprocessing.cpu_count())  # Workers parallèles pour API embeddings
+PARALLEL_EMBEDDING_WORKERS = 8  # Workers parallèles pour appels API (I/O bound, pas CPU)
 
 HARDCODE = {
     "DALLEM_API_BASE": "https://api.dev.dassault-aviation.pro/dallem-pilote/v1",
