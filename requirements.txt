@@ -13,6 +13,7 @@ faiss-cpu>=1.7.4
 # Traitement de documents
 pdfminer.six>=20221105
 pymupdf>=1.24.0  # Fallback pour extraction PDF robuste
+pdfplumber>=0.10.0  # Extraction améliorée des tableaux PDF
 python-docx>=0.8.11
 
 # Traitement de texte
