@@ -325,34 +325,9 @@ def extract_text_from_pdf(
     # 1) Tentative pdfminer
     try:
         laparams = LAParams()
-        output = io.StringIO()
         with open(path, "rb") as f:
-            if version.parse(pdfminer.__version__) >= version.parse("20201018"):
-                try:
-                    extract_text(
-                        f,
-                        output,
-                        laparams=laparams,
-                        codec="utf-8",
-                        output_type="text",
-                    )
-                except TypeError:
-                    # If output_type is not supported, fall back to the older method
-                    f.seek(0)
-                    extract_text(
-                        f,
-                        output,
-                        laparams=laparams,
-                        codec="utf-8",
-                    )
-            else:
-                extract_text(
-                    f,
-                    output,
-                    laparams=laparams,
-                    codec="utf-8",
-                )
-        text_pdfminer = output.getvalue()
+            # Utiliser la version simplifiée qui retourne directement une string
+            text_pdfminer = extract_text(f, laparams=laparams)
         logging.info(f"[pdf_processing] Extraction pdfminer OK pour {path}")
     except PDFPasswordIncorrect:
         logging.error(f"[pdf_processing] PDF protégé par mot de passe : {path}")
