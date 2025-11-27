@@ -22,11 +22,6 @@ from typing import Dict, List, Tuple, Callable, Optional
 import streamlit as st
 
 from models_utils import EMBED_MODEL, LLM_MODEL, make_logger
-# ═══════════════════════════════════════════════════════════════════
-# ⚠️ BLOC MODE TEST LOCAL - À SUPPRIMER APRÈS LES TESTS ⚠️
-from models_utils import set_local_mode  # Import pour le mode test local
-# FIN BLOC MODE TEST LOCAL
-# ═══════════════════════════════════════════════════════════════════
 from rag_ingestion import ingest_documents, build_faiss_store
 from rag_query import run_rag_query
 from feedback_store import FeedbackStore, create_feedback, QueryFeedback
@@ -440,11 +435,6 @@ base_root = BASE_ROOT_DIR
 bases = list_bases(base_root)
 use_easa_sections = st.session_state.get("use_easa_sections", False)
 
-# Assurer que le mode en ligne est actif par défaut
-if "use_local_models" not in st.session_state:
-    st.session_state["use_local_models"] = False
-    set_local_mode(False, None, None)  # Mode en ligne par défaut
-
 if current_user in allowed_users:
     with st.sidebar:
         st.header("⚙️ Configuration globale")
@@ -467,62 +457,9 @@ if current_user in allowed_users:
 
         st.markdown("---")
 
-        # ═══════════════════════════════════════════════════════════════════
-        # MODE LOCAL - Utilise les chemins de config_manager.py
-        # ═══════════════════════════════════════════════════════════════════
-        st.markdown("### 🤖 Mode Local")
-
-        # Charger les chemins depuis la configuration
-        from config_manager import get_local_embedding_path, get_local_llm_path, get_local_reranker_path
-
-        if "use_local_models" not in st.session_state:
-            st.session_state["use_local_models"] = False
-
-        # Récupérer les chemins depuis config.json
-        config_embedding_path = get_local_embedding_path()
-        config_llm_path = get_local_llm_path()
-        config_reranker_path = get_local_reranker_path()
-
-        use_local = st.checkbox(
-            "🔧 Activer le mode local (modèles locaux)",
-            value=st.session_state["use_local_models"],
-            help="Active l'utilisation de modèles locaux au lieu de Snowflake et DALLEM"
-        )
-        st.session_state["use_local_models"] = use_local
-
-        if use_local:
-            st.warning("⚠️ Mode local activé - Les modèles Snowflake et DALLEM ne seront PAS utilisés")
-
-            # Afficher les chemins configurés (lecture seule, modifiables dans config.json)
-            st.caption("📁 Chemins configurés dans `config.json` :")
-            if config_embedding_path:
-                st.success(f"✅ Embedding: `{config_embedding_path}`")
-            else:
-                st.info("ℹ️ Aucun modèle d'embedding configuré")
-
-            if config_llm_path:
-                st.success(f"✅ LLM: `{config_llm_path}`")
-            else:
-                st.info("ℹ️ Aucun modèle LLM configuré")
-
-            if config_reranker_path:
-                st.success(f"✅ Reranker: `{config_reranker_path}`")
-            else:
-                st.info("ℹ️ Aucun modèle reranker configuré (API utilisée)")
-
-            st.caption("💡 Pour modifier les chemins, éditez `config.json` ou la page de configuration.")
-
-            # Activer le mode local dans models_utils
-            set_local_mode(True, config_embedding_path, config_llm_path, config_reranker_path)
-        else:
-            st.caption(f"🔹 Embeddings : **Snowflake** – `{EMBED_MODEL}`")
-            st.caption(f"🔹 LLM : **DALLEM** – `{LLM_MODEL}`")
-
-            # Désactiver le mode local dans models_utils
-            set_local_mode(False, None, None, None)
-        # ═══════════════════════════════════════════════════════════════════
-        # FIN MODE LOCAL
-        # ═══════════════════════════════════════════════════════════════════
+        st.markdown("### 🤖 Modèles utilisés")
+        st.caption(f"🔹 Embeddings : **Snowflake** – `{EMBED_MODEL}`")
+        st.caption(f"🔹 LLM : **DALLEM** – `{LLM_MODEL}`")
 
 
 # ========================
