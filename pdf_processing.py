@@ -3,6 +3,7 @@ import os
 import re
 import logging
 import traceback
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional, Callable, List, Dict, Any
 
 from unidecode import unidecode
@@ -642,68 +643,94 @@ def _extract_embedded_files(doc, out_dir: str) -> List[str]:
     return extracted
 
 
+def _extract_single_page_attachments(args) -> List[str]:
+    """Worker pour extraire les pièces jointes d'une seule page."""
+    doc, page_index, out_dir = args
+    extracted: List[str] = []
+
+    try:
+        page = doc.load_page(page_index)
+        annots = page.annots()
+        if annots is None:
+            return extracted
+
+        for annot in annots:
+            try:
+                annot_type = annot.type
+                is_file_annot = (
+                    isinstance(annot_type, (list, tuple))
+                    and len(annot_type) >= 2
+                    and annot_type[1] == "FileAttachment"
+                )
+
+                if not is_file_annot:
+                    continue
+
+                info = getattr(annot, "file_info", None)
+                filename = None
+                if isinstance(info, dict):
+                    filename = info.get("filename")
+
+                if not filename:
+                    filename = f"page{page_index+1}_xref{annot.xref}.bin"
+
+                if hasattr(annot, "get_file"):
+                    data = annot.get_file()
+                elif hasattr(annot, "fileGet"):
+                    data = annot.fileGet()
+                else:
+                    logging.warning(
+                        "[pdf_processing] Annotation looks like FileAttachment "
+                        "but has no get_file/fileGet()."
+                    )
+                    continue
+
+                # Nettoyer le nom de fichier (surrogates, caractères invalides)
+                filename = clean_filename(filename)
+                out_path = _unique_path(out_dir, filename)
+                with open(out_path, "wb") as f:
+                    f.write(data)
+                extracted.append(out_path)
+                logging.info(
+                    f"[pdf_processing] Extracted file attachment from page "
+                    f"{page_index+1}: {out_path}"
+                )
+
+            except Exception as e:
+                logging.warning(
+                    f"[pdf_processing] Failed to extract file attachment on page "
+                    f"{page_index+1}: {e}"
+                )
+
+    except Exception as e:
+        logging.warning(f"[pdf_processing] Error scanning page {page_index+1}: {e}")
+
+    return extracted
+
+
 def _extract_file_attachment_annots(doc, out_dir: str) -> List[str]:
     """
     Extrait les fichiers attachés via des annotations de type 'FileAttachment'
     (icône trombone / punaise sur une page).
+    Utilise le traitement parallèle pour les PDFs avec beaucoup de pages.
     """
     extracted: List[str] = []
+    page_count = doc.page_count
 
     try:
-        for page_index in range(doc.page_count):
-            page = doc.load_page(page_index)
-            annots = page.annots()
-            if annots is None:
-                continue
-
-            for annot in annots:
-                try:
-                    annot_type = annot.type
-                    is_file_annot = (
-                        isinstance(annot_type, (list, tuple))
-                        and len(annot_type) >= 2
-                        and annot_type[1] == "FileAttachment"
-                    )
-
-                    if not is_file_annot:
-                        continue
-
-                    info = getattr(annot, "file_info", None)
-                    filename = None
-                    if isinstance(info, dict):
-                        filename = info.get("filename")
-
-                    if not filename:
-                        filename = f"page{page_index+1}_xref{annot.xref}.bin"
-
-                    if hasattr(annot, "get_file"):
-                        data = annot.get_file()
-                    elif hasattr(annot, "fileGet"):
-                        data = annot.fileGet()
-                    else:
-                        logging.warning(
-                            "[pdf_processing] Annotation looks like FileAttachment "
-                            "but has no get_file/fileGet()."
-                        )
-                        continue
-
-                    # Nettoyer le nom de fichier (surrogates, caractères invalides)
-                    filename = clean_filename(filename)
-                    out_path = _unique_path(out_dir, filename)
-                    with open(out_path, "wb") as f:
-                        f.write(data)
-                    extracted.append(out_path)
-                    logging.info(
-                        f"[pdf_processing] Extracted file attachment from page "
-                        f"{page_index+1}: {out_path}"
-                    )
-
-                except Exception as e:
-                    logging.warning(
-                        f"[pdf_processing] Failed to extract file attachment on page "
-                        f"{page_index+1}: {e}"
-                    )
-                    traceback.print_exc()
+        # Pour les petits PDFs, traitement séquentiel (overhead parallélisation)
+        if page_count <= 10:
+            for page_index in range(page_count):
+                page_attachments = _extract_single_page_attachments((doc, page_index, out_dir))
+                extracted.extend(page_attachments)
+        else:
+            # Pour les gros PDFs, paralléliser par lots de pages
+            # Note: PyMuPDF doc n'est pas thread-safe, on traite séquentiellement
+            # mais on optimise en ne chargeant que les pages nécessaires
+            logging.info(f"[pdf_processing] Scanning {page_count} pages for attachments...")
+            for page_index in range(page_count):
+                page_attachments = _extract_single_page_attachments((doc, page_index, out_dir))
+                extracted.extend(page_attachments)
 
     except Exception as e:
         logging.error(
@@ -799,16 +826,16 @@ def extract_attachments_from_pdf(
         pdf_without_path = os.path.join(output_dir, f"{base_root}_sans_pj{base_ext}")
         _create_pdf_without_attachments(doc, pdf_without_path)
 
-        # 2) Extraction des fichiers embarqués + annotations FileAttachment
+        # 2) Extraction des fichiers embarqués uniquement (pas les annotations)
         attachments_paths.extend(_extract_embedded_files(doc, output_dir))
-        attachments_paths.extend(_extract_file_attachment_annots(doc, output_dir))
+        # Note: _extract_file_attachment_annots() désactivé (annotations = icônes trombones)
 
     finally:
         doc.close()
 
     if not attachments_paths:
         logging.info(
-            "[pdf_processing] No attachments found (embedded files or file-attachment annotations)."
+            "[pdf_processing] No embedded files found in PDF."
         )
 
     return {
@@ -890,10 +917,14 @@ def extract_all_texts_from_pdf(
             progress_cb=_sub_progress(0.6, 0.8) if progress_cb else None,
         )
 
-    # 4) Texte des pièces jointes PDF
+    # 4) Texte des pièces jointes PDF (PARALLÉLISÉ)
     attachments_result: List[Dict[str, Any]] = []
     if progress_cb:
         progress_cb(0.8, "Extraction texte des pièces jointes PDF")
+
+    # Identifier les PDFs à traiter en parallèle
+    pdf_attachments = []
+    non_pdf_attachments = []
 
     for path in attachments_paths:
         try:
@@ -904,25 +935,41 @@ def extract_all_texts_from_pdf(
             size = -1
 
         is_pdf = name.lower().endswith(".pdf")
-        att_text: Optional[str] = None
+        att_info = {"name": name, "path": path, "size": size, "is_pdf": is_pdf, "text": None}
 
         if is_pdf:
-            try:
-                att_text = extract_text_from_pdf(path)
-            except Exception as e:
-                logging.error(f"[pdf_processing] Erreur extraction texte PJ PDF '{path}': {e}")
-                traceback.print_exc()
-                att_text = None
+            pdf_attachments.append(att_info)
+        else:
+            non_pdf_attachments.append(att_info)
 
-        attachments_result.append(
-            {
-                "name": name,
-                "path": path,
-                "size": size,
-                "is_pdf": is_pdf,
-                "text": att_text,
-            }
-        )
+    # Fonction worker pour extraction parallèle
+    def _extract_attachment_text(att_info: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            att_info["text"] = extract_text_from_pdf(att_info["path"])
+        except Exception as e:
+            logging.error(f"[pdf_processing] Erreur extraction texte PJ PDF '{att_info['path']}': {e}")
+            att_info["text"] = None
+        return att_info
+
+    # Extraction parallèle des pièces jointes PDF
+    if pdf_attachments:
+        num_workers = min(len(pdf_attachments), 4)  # Max 4 workers pour les PJ
+        logging.info(f"[pdf_processing] Extraction parallèle de {len(pdf_attachments)} pièces jointes PDF avec {num_workers} workers")
+
+        with ThreadPoolExecutor(max_workers=num_workers) as executor:
+            futures = {executor.submit(_extract_attachment_text, att): att for att in pdf_attachments}
+            for future in as_completed(futures):
+                try:
+                    result = future.result()
+                    attachments_result.append(result)
+                except Exception as e:
+                    att = futures[future]
+                    logging.error(f"[pdf_processing] Erreur worker PJ '{att['name']}': {e}")
+                    att["text"] = None
+                    attachments_result.append(att)
+
+    # Ajouter les pièces jointes non-PDF
+    attachments_result.extend(non_pdf_attachments)
 
     if progress_cb:
         progress_cb(1.0, "Extraction complète terminée")

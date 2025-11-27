@@ -512,11 +512,23 @@ def detect_and_clean_surrogates(text: str) -> str:
     """
 ```
 
-### Parser DOCX (`docx_processing.py`)
+### Parser DOCX/DOC (`docx_processing.py`)
 
 ```python
+def convert_doc_to_docx(doc_path: str) -> str:
+    """
+    Conversion .doc → .docx via Microsoft Word (Windows).
+    Requiert pywin32 et Word installé.
+    """
+
 def docx_to_text(path: str) -> str:
     """Extraction texte complet (paragraphes joints par \n)"""
+
+def extract_text_from_docx(path: str) -> str:
+    """
+    Extraction texte .docx ou .doc.
+    Pour .doc: conversion automatique via Word.
+    """
 
 def extract_paragraphs_from_docx(path: str) -> List[str]:
     """Liste des paragraphes individuels"""
@@ -833,6 +845,7 @@ pdfminer.six>=20221105
 pymupdf>=1.24.0
 pdfplumber>=0.10.0  # Extraction améliorée des tableaux
 python-docx>=0.8.11
+pywin32>=306       # Conversion .doc → .docx via Word (Windows)
 
 # Traitement texte
 langdetect>=1.0.9

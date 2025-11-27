@@ -1,6 +1,91 @@
 # docx_processing.py
 import docx
 import re
+import os
+import tempfile
+import shutil
+import logging
+
+
+def convert_doc_to_docx(doc_path: str) -> str:
+    """
+    Convertit un fichier .doc en .docx via Microsoft Word (Windows).
+
+    Requiert:
+    - Windows avec Microsoft Word installé
+    - pywin32 (pip install pywin32)
+
+    Retourne le chemin vers le fichier .docx créé (dans un dossier temporaire).
+    Le fichier temporaire doit être supprimé par l'appelant après usage.
+    """
+    if not os.path.isfile(doc_path):
+        raise FileNotFoundError(f"Fichier introuvable: {doc_path}")
+
+    if os.name != 'nt':
+        raise RuntimeError(
+            "La conversion .doc → .docx nécessite Windows avec Microsoft Word. "
+            "Sur Linux/Mac, convertissez manuellement vos fichiers .doc en .docx."
+        )
+
+    try:
+        import win32com.client
+        import pythoncom
+    except ImportError:
+        raise RuntimeError(
+            "pywin32 non installé. Exécutez: pip install pywin32\n"
+            "Puis redémarrez Python/l'application."
+        )
+
+    temp_dir = tempfile.mkdtemp(prefix="doc_convert_")
+    logging.info(f"[docx_processing] Conversion .doc → .docx: {os.path.basename(doc_path)}")
+
+    # Initialiser COM pour ce thread
+    pythoncom.CoInitialize()
+
+    word = None
+    doc = None
+    try:
+        word = win32com.client.Dispatch("Word.Application")
+        word.Visible = False
+        word.DisplayAlerts = False
+
+        # Chemin absolu requis par Word
+        abs_doc_path = os.path.abspath(doc_path)
+
+        # Ouvrir le document
+        doc = word.Documents.Open(abs_doc_path)
+
+        # Chemin de sortie
+        base_name = os.path.splitext(os.path.basename(doc_path))[0]
+        docx_path = os.path.join(temp_dir, f"{base_name}.docx")
+        abs_docx_path = os.path.abspath(docx_path)
+
+        # Sauvegarder en .docx (format 16 = wdFormatXMLDocument)
+        doc.SaveAs2(abs_docx_path, FileFormat=16)
+
+        logging.info(f"[docx_processing] Conversion Word réussie: {docx_path}")
+        return docx_path
+
+    except Exception as e:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise RuntimeError(
+            f"Erreur lors de la conversion avec Word: {e}\n"
+            f"Vérifiez que Microsoft Word est installé et fonctionne."
+        )
+
+    finally:
+        if doc:
+            try:
+                doc.Close(False)
+            except Exception:
+                pass
+        if word:
+            try:
+                word.Quit()
+            except Exception:
+                pass
+        pythoncom.CoUninitialize()
+
 
 def docx_to_text(docx_path):
     """
@@ -24,11 +109,36 @@ def normalize_whitespace(text: str) -> str:
         norm_lines.append(line.strip())
     return "\n".join(norm_lines).strip()
 
-def extract_text_from_docx(docx_path):
+def extract_text_from_docx(file_path: str) -> str:
     """
-    Extrait et nettoie le texte d'un fichier DOCX, compatible avec la détection EASA.
+    Extrait et nettoie le texte d'un fichier DOCX ou DOC.
+
+    Pour les fichiers .doc (ancien format), convertit automatiquement en .docx
+    via Microsoft Word avant extraction (Windows uniquement).
+
+    Args:
+        file_path: Chemin vers le fichier .doc ou .docx
+
+    Returns:
+        Texte extrait et nettoyé
     """
-    raw_text = docx_to_text(docx_path)
+    ext = os.path.splitext(file_path)[1].lower()
+
+    if ext == ".doc":
+        # Convertir .doc → .docx avec Microsoft Word
+        temp_docx = None
+        try:
+            temp_docx = convert_doc_to_docx(file_path)
+            raw_text = docx_to_text(temp_docx)
+        finally:
+            # Nettoyer le fichier temporaire
+            if temp_docx and os.path.isfile(temp_docx):
+                temp_dir = os.path.dirname(temp_docx)
+                shutil.rmtree(temp_dir, ignore_errors=True)
+    else:
+        # Fichier .docx natif
+        raw_text = docx_to_text(file_path)
+
     return normalize_whitespace(raw_text)
 
 def extract_paragraphs_from_docx(docx_path):

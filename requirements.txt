@@ -15,11 +15,13 @@ pdfminer.six>=20221105
 pymupdf>=1.24.0  # Fallback pour extraction PDF robuste
 pdfplumber>=0.10.0  # Extraction améliorée des tableaux PDF
 python-docx>=0.8.11
+pywin32>=306; sys_platform == "win32"  # Conversion .doc → .docx via Microsoft Word
 
 # Traitement de texte
 langdetect>=1.0.9
 unidecode>=1.3.6
 chardet>=5.1.0
+beautifulsoup4>=4.12.0  # Parsing HTML (Confluence)
 
 # API et modèles (Snowflake Arctic + DALLEM)
 openai>=1.0.0
