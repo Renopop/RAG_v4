@@ -21,7 +21,7 @@ import openai
 
 LLM_MODEL = "dallem-val"
 EMBED_MODEL = "snowflake-arctic-embed-l-v2.0"
-BATCH_SIZE = 16  # taille batch embeddings
+BATCH_SIZE = 64  # taille batch embeddings (augmenté pour performance)
 
 HARDCODE = {
     "DALLEM_API_BASE": "https://api.dev.dassault-aviation.pro/dallem-pilote/v1",
