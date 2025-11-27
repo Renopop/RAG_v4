@@ -32,7 +32,6 @@ from chunking import (
     adaptive_chunk_document,
     augment_chunks,
     _calculate_content_density,
-    _get_adaptive_chunk_size,
     add_cross_references_to_chunks,
     extract_cross_references,
 )
@@ -286,41 +285,43 @@ def ingest_documents(
                 f"[INGEST] {len(sections)} EASA section(s) detected for {path} → Adaptive Smart Chunking"
             )
 
-            # Analyser la densité du document pour adapter la taille des chunks
+            # Analyser la densité du document UNE SEULE FOIS
             density_info = _calculate_content_density(text)
-            adapted_chunk_size = _get_adaptive_chunk_size(
-                text,
-                base_size=chunk_size,
-                min_size=600,
-                max_size=2000
-            )
+            density_type = density_info["density_type"]
+            density_score = density_info["density_score"]
+
+            # Calculer la taille adaptative directement (sans recalculer la densité)
+            base_sizes = {"very_dense": 800, "dense": 1200, "normal": 1500, "sparse": 2000}
+            recommended = base_sizes.get(density_type, 1500)
+            ratio = recommended / 1500  # 1500 = normal
+            adapted_chunk_size = max(600, min(int(chunk_size * ratio), 2000))
 
             _log.info(
-                f"[INGEST] Content density: {density_info['density_type']} "
-                f"(score={density_info['density_score']:.2f}) → chunk_size={adapted_chunk_size}"
+                f"[INGEST] Content density: {density_type} "
+                f"(score={density_score:.2f}) → chunk_size={adapted_chunk_size}"
             )
 
-            # Utiliser le smart chunking adaptatif qui:
-            # - Préserve le contexte [CS xx.xxx - Title] dans chaque chunk
-            # - Ne redécoupe pas les petites sections
-            # - Fusionne les sections trop petites
-            # - Découpe intelligemment par sous-sections (a), (b), etc.
-            # - Adapte la taille selon la densité du contenu
+            # Utiliser le smart chunking adaptatif
             smart_chunks = chunk_easa_sections(
                 sections,
-                max_chunk_size=adapted_chunk_size + 500,  # +500 pour le préfixe de contexte
+                max_chunk_size=adapted_chunk_size + 500,
                 min_chunk_size=200,
                 merge_small_sections=True,
                 add_context_prefix=True,
             )
 
-            # Augmenter les chunks avec mots-clés et métadonnées
+            # Augmenter les chunks SANS recalculer la densité (on la passe manuellement)
             smart_chunks = augment_chunks(
                 smart_chunks,
                 add_keywords=True,
                 add_key_phrases=True,
-                add_density_info=True,
+                add_density_info=False,  # Désactivé - on passe la densité document
             )
+
+            # Ajouter la densité du document à tous les chunks (évite N recalculs)
+            for chunk in smart_chunks:
+                chunk["density_type"] = density_type
+                chunk["density_score"] = density_score
 
             # Ajouter les cross-références (liens vers autres sections)
             smart_chunks = add_cross_references_to_chunks(smart_chunks)
@@ -379,31 +380,27 @@ def ingest_documents(
                 f"[INGEST] No EASA sections detected → Adaptive Automatic Chunking for {path}"
             )
 
-            # Analyser la densité du document pour adapter la taille des chunks
+            # Analyser la densité du document UNE SEULE FOIS
             density_info = _calculate_content_density(text)
-            adapted_chunk_size = _get_adaptive_chunk_size(
-                text,
-                base_size=chunk_size,
-                min_size=600,
-                max_size=2000
-            )
+            density_type = density_info["density_type"]
+            density_score = density_info["density_score"]
+
+            # Calculer la taille adaptative directement (sans recalculer la densité)
+            base_sizes = {"very_dense": 800, "dense": 1200, "normal": 1500, "sparse": 2000}
+            recommended = base_sizes.get(density_type, 1500)
+            ratio = recommended / 1500
+            adapted_chunk_size = max(600, min(int(chunk_size * ratio), 2000))
 
             _log.info(
-                f"[INGEST] Content density: {density_info['density_type']} "
-                f"(score={density_info['density_score']:.2f}) → chunk_size={adapted_chunk_size}"
+                f"[INGEST] Content density: {density_type} "
+                f"(score={density_score:.2f}) → chunk_size={adapted_chunk_size}"
             )
 
-            # Utiliser le smart chunking générique adaptatif qui:
-            # - Détecte les titres/headers et les garde avec leur contenu
-            # - Préserve les listes (ne coupe pas au milieu)
-            # - Coupe aux fins de phrases
-            # - Ajoute le contexte source [Source: filename]
-            # - Respecte la structure du document
-            # - Adapte la taille selon la densité
+            # Utiliser le smart chunking générique adaptatif
             smart_chunks = smart_chunk_generic(
                 text,
                 source_file=base_name,
-                chunk_size=adapted_chunk_size + 300,  # +300 pour les préfixes
+                chunk_size=adapted_chunk_size + 300,
                 min_chunk_size=200,
                 overlap=100,
                 add_source_prefix=True,
@@ -411,15 +408,20 @@ def ingest_documents(
                 preserve_headers=True,
             )
 
-            # Augmenter les chunks avec mots-clés et métadonnées
+            # Augmenter les chunks SANS recalculer la densité
             smart_chunks = augment_chunks(
                 smart_chunks,
                 add_keywords=True,
                 add_key_phrases=True,
-                add_density_info=True,
+                add_density_info=False,  # Désactivé - on passe la densité document
             )
 
-            # Ajouter les cross-références (liens vers autres sections)
+            # Ajouter la densité du document à tous les chunks
+            for chunk in smart_chunks:
+                chunk["density_type"] = density_type
+                chunk["density_score"] = density_score
+
+            # Ajouter les cross-références
             smart_chunks = add_cross_references_to_chunks(smart_chunks)
 
             _log.info(f"[INGEST] Adaptive generic chunking: {len(smart_chunks)} augmented chunks")
