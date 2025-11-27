@@ -21,7 +21,8 @@ import openai
 
 LLM_MODEL = "dallem-val"
 EMBED_MODEL = "snowflake-arctic-embed-l-v2.0"
-BATCH_SIZE = 16  # taille batch embeddings
+BATCH_SIZE = 32  # taille batch embeddings (équilibre performance/sécurité)
+MAX_CHARS_PER_TEXT = 28000  # ~7000 tokens max par texte (limite Snowflake: 8192 tokens)
 
 HARDCODE = {
     "DALLEM_API_BASE": "https://api.dev.dassault-aviation.pro/dallem-pilote/v1",
@@ -248,14 +249,28 @@ def embed_in_batches(
 ) -> np.ndarray:
     """
     Découpe en batches, appelle le client embeddings, normalise les vecteurs (L2).
+    Tronque automatiquement les textes trop longs pour éviter les erreurs de tokens.
     """
+    # Tronquer les textes trop longs (limite Snowflake: 8192 tokens ≈ 28000 chars)
+    truncated_count = 0
+    safe_texts = []
+    for t in texts:
+        if len(t) > MAX_CHARS_PER_TEXT:
+            safe_texts.append(t[:MAX_CHARS_PER_TEXT])
+            truncated_count += 1
+        else:
+            safe_texts.append(t)
+
+    if truncated_count > 0:
+        log.warning(f"[emb] {truncated_count} texte(s) tronqué(s) à {MAX_CHARS_PER_TEXT} caractères")
+
     out: List[List[float]] = []
-    n = len(texts)
+    n = len(safe_texts)
     log.info(
         f"[emb] start role={role} | n={n} | batch_size={batch_size} | dry_run={dry_run}"
     )
     for i in range(0, n, batch_size):
-        chunk = texts[i: i + batch_size]
+        chunk = safe_texts[i: i + batch_size]
         log.debug(
             f"[emb] chunk {i // batch_size + 1}/{math.ceil(n / max(1, batch_size))} "
             f"| size={len(chunk)} | first='{(chunk[0][:120] if chunk else '')}'"

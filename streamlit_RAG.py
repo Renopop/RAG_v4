@@ -50,6 +50,39 @@ except ImportError:
 
 logger = make_logger(debug=False)
 
+
+# =====================================================================
+#  CACHE POUR LES REQUÊTES RAG (amélioration performance)
+# =====================================================================
+@st.cache_data(ttl=1800, show_spinner=False)  # Cache 30 minutes
+def cached_rag_query(
+    db_path: str,
+    collection_name: str,
+    question: str,
+    top_k: int = 30,
+    synthesize_all: bool = False,
+    use_feedback_reranking: bool = False,
+    use_query_expansion: bool = True,
+    use_bge_reranker: bool = True,
+) -> dict:
+    """
+    Version cachée de run_rag_query pour éviter les recalculs sur requêtes identiques.
+    Le cache est invalidé après 30 minutes (ttl=1800).
+    """
+    return run_rag_query(
+        db_path=db_path,
+        collection_name=collection_name,
+        question=question,
+        top_k=top_k,
+        synthesize_all=synthesize_all,
+        log=logger,
+        feedback_store=None,  # Pas de feedback dans le cache (sinon problèmes de sérialisation)
+        use_feedback_reranking=use_feedback_reranking,
+        use_query_expansion=use_query_expansion,
+        use_bge_reranker=use_bge_reranker,
+    )
+
+
 # =====================================================================
 #  CONFIG LOCALE - CHARGÉE DEPUIS config.json
 # =====================================================================
@@ -1597,13 +1630,12 @@ with tab_rag:
                         # RAG sur une collection unique
                         spinner_msg = "🔍 RAG en cours…"
                         with st.spinner(spinner_msg):
-                            result = run_rag_query(
+                            # Utiliser le cache pour les requêtes répétées (30 min TTL)
+                            result = cached_rag_query(
                                 db_path=db_path_query,
                                 collection_name=collection_for_query,
                                 question=question,
                                 top_k=top_k,
-                                log=logger,
-                                feedback_store=feedback_store if use_feedback_reranking else None,
                                 use_feedback_reranking=use_feedback_reranking,
                                 use_query_expansion=True,
                                 use_bge_reranker=True,
@@ -1625,14 +1657,13 @@ with tab_rag:
                                 )
                                 spinner_msg = "🔍 RAG en cours (ALL)…"
                                 with st.spinner(spinner_msg):
-                                    result = run_rag_query(
+                                    # Utiliser le cache pour les requêtes répétées (30 min TTL)
+                                    result = cached_rag_query(
                                         db_path=db_path_query,
                                         collection_name="ALL",
                                         question=question,
                                         top_k=top_k,
                                         synthesize_all=True,
-                                        log=logger,
-                                        feedback_store=feedback_store if use_feedback_reranking else None,
                                         use_feedback_reranking=use_feedback_reranking,
                                         use_query_expansion=True,
                                         use_bge_reranker=True,
@@ -1652,16 +1683,15 @@ with tab_rag:
                                 with st.spinner(spinner_msg):
                                     for coll in collections_all:
                                         try:
-                                            res = run_rag_query(
+                                            # Utiliser le cache pour les requêtes répétées (30 min TTL)
+                                            res = cached_rag_query(
                                                 db_path=db_path_query,
                                                 collection_name=coll,
                                                 question=question,
                                                 top_k=top_k,
-                                                feedback_store=feedback_store if use_feedback_reranking else None,
                                                 use_feedback_reranking=use_feedback_reranking,
                                                 use_query_expansion=True,
                                                 use_bge_reranker=True,
-                                                log=logger,
                                             )
                                             all_results.append((coll, res))
                                         except Exception as e:
