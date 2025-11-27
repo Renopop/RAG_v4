@@ -252,56 +252,36 @@ def ingest_documents(
     _log.info(f"[INGEST] Parallel loading complete: {len(loaded_files)}/{len(file_paths)} files loaded")
 
     # ------------------------------------------------------------------
-    # Traitement séquentiel des fichiers chargés (chunking + embedding)
+    # Fonction worker pour chunker un fichier (parallélisable)
     # ------------------------------------------------------------------
-    processed_count = 0
-    total_loaded = len(loaded_files)
-
-    for path in file_paths:
-        # Récupérer le fichier chargé (peut être None si échec)
-        file_data = loaded_files.get(path)
-        if not file_data:
-            continue  # Déjà logué dans la phase de chargement
+    def _chunk_single_file(args):
+        """Worker pour chunker un seul fichier en parallèle."""
+        path, file_data, use_easa, chunk_sz, log_paths = args
 
         text = file_data["text"]
         language = file_data["language"]
-
-        # --------------------------------------------------------------
-        # Try to split into EASA sections (CS / AMC / GM / CS-E / CS-APU)
-        # --------------------------------------------------------------
-        sections = split_easa_sections(text) if use_easa_sections else []
-
-        chunks: List[str] = []
-        metas: List[Dict[str, Any]] = []
-        faiss_ids: List[str] = []  # IDs envoyés à FAISS (doivent être uniques)
-
         base_name = os.path.basename(path)
 
-        # ==============================================================
-        # CAS 1 — Sections EASA détectées → Smart Chunking Adaptatif
-        # ==============================================================
+        chunks_list = []
+        metas_list = []
+        faiss_ids_list = []
+
+        # Essayer de découper en sections EASA
+        sections = split_easa_sections(text) if use_easa else []
+
+        # Analyser la densité du document UNE SEULE FOIS
+        density_info = _calculate_content_density(text)
+        density_type = density_info["density_type"]
+        density_score = density_info["density_score"]
+
+        # Calculer la taille adaptative
+        base_sizes = {"very_dense": 800, "dense": 1200, "normal": 1500, "sparse": 2000}
+        recommended = base_sizes.get(density_type, 1500)
+        ratio = recommended / 1500
+        adapted_chunk_size = max(600, min(int(chunk_sz * ratio), 2000))
+
         if sections:
-            _log.info(
-                f"[INGEST] {len(sections)} EASA section(s) detected for {path} → Adaptive Smart Chunking"
-            )
-
-            # Analyser la densité du document UNE SEULE FOIS
-            density_info = _calculate_content_density(text)
-            density_type = density_info["density_type"]
-            density_score = density_info["density_score"]
-
-            # Calculer la taille adaptative directement (sans recalculer la densité)
-            base_sizes = {"very_dense": 800, "dense": 1200, "normal": 1500, "sparse": 2000}
-            recommended = base_sizes.get(density_type, 1500)
-            ratio = recommended / 1500  # 1500 = normal
-            adapted_chunk_size = max(600, min(int(chunk_size * ratio), 2000))
-
-            _log.info(
-                f"[INGEST] Content density: {density_type} "
-                f"(score={density_score:.2f}) → chunk_size={adapted_chunk_size}"
-            )
-
-            # Utiliser le smart chunking adaptatif
+            # CAS 1 — Sections EASA
             smart_chunks = chunk_easa_sections(
                 sections,
                 max_chunk_size=adapted_chunk_size + 500,
@@ -310,93 +290,53 @@ def ingest_documents(
                 add_context_prefix=True,
             )
 
-            # Augmenter les chunks SANS recalculer la densité (on la passe manuellement)
             smart_chunks = augment_chunks(
                 smart_chunks,
                 add_keywords=True,
                 add_key_phrases=True,
-                add_density_info=False,  # Désactivé - on passe la densité document
+                add_density_info=False,
             )
 
-            # Ajouter la densité du document à tous les chunks (évite N recalculs)
             for chunk in smart_chunks:
                 chunk["density_type"] = density_type
                 chunk["density_score"] = density_score
 
-            # Ajouter les cross-références (liens vers autres sections)
             smart_chunks = add_cross_references_to_chunks(smart_chunks)
-
-            _log.info(f"[INGEST] Adaptive chunking: {len(sections)} sections → {len(smart_chunks)} augmented chunks")
 
             for smart_chunk in smart_chunks:
                 ch = smart_chunk.get("text", "")
+                if not ch:
+                    continue
+
                 sec_id = smart_chunk.get("section_id", "")
                 sec_kind = smart_chunk.get("section_kind", "")
                 sec_title = smart_chunk.get("section_title", "")
                 chunk_idx = smart_chunk.get("chunk_index", 0)
-
-                # Données d'augmentation
                 keywords = smart_chunk.get("keywords", [])
-                density_type = smart_chunk.get("density_type", "")
-                density_score = smart_chunk.get("density_score", 0)
                 references_to = smart_chunk.get("references_to", [])
 
-                if not ch:
-                    continue
-
-                # chunk_id lisible / logique
                 safe_sec_id = sec_id.replace(" ", "_").replace("|", "_") if sec_id else "no_section"
                 chunk_id = f"{base_name}_{safe_sec_id}_{chunk_idx}"
-
-                # ID réellement utilisé par FAISS (unique grâce à un uuid par chunk)
                 faiss_id = f"{chunk_id}__{uuid.uuid4().hex[:8]}"
 
-                chunks.append(ch)
-                metas.append(
-                    {
-                        "source_file": base_name,
-                        "path": logical_paths.get(path, path) if logical_paths else path,
-                        "chunk_id": chunk_id,
-                        "section_id": sec_id,
-                        "section_kind": sec_kind,
-                        "section_title": sec_title,
-                        "language": language,
-                        "is_complete_section": smart_chunk.get("is_complete_section", False),
-                        # Métadonnées d'augmentation
-                        "keywords": keywords[:10] if keywords else [],
-                        "density_type": density_type,
-                        "density_score": density_score,
-                        # Cross-références vers d'autres sections
-                        "references_to": references_to[:5] if references_to else [],
-                    }
-                )
-                faiss_ids.append(faiss_id)
-
-        # ==============================================================
-        # CAS 2 — Aucune section EASA : Chunking Adaptatif Automatique
-        # ==============================================================
+                chunks_list.append(ch)
+                metas_list.append({
+                    "source_file": base_name,
+                    "path": log_paths.get(path, path) if log_paths else path,
+                    "chunk_id": chunk_id,
+                    "section_id": sec_id,
+                    "section_kind": sec_kind,
+                    "section_title": sec_title,
+                    "language": language,
+                    "is_complete_section": smart_chunk.get("is_complete_section", False),
+                    "keywords": keywords[:10] if keywords else [],
+                    "density_type": density_type,
+                    "density_score": density_score,
+                    "references_to": references_to[:5] if references_to else [],
+                })
+                faiss_ids_list.append(faiss_id)
         else:
-            _log.info(
-                f"[INGEST] No EASA sections detected → Adaptive Automatic Chunking for {path}"
-            )
-
-            # Analyser la densité du document UNE SEULE FOIS
-            density_info = _calculate_content_density(text)
-            density_type = density_info["density_type"]
-            density_score = density_info["density_score"]
-
-            # Calculer la taille adaptative directement (sans recalculer la densité)
-            base_sizes = {"very_dense": 800, "dense": 1200, "normal": 1500, "sparse": 2000}
-            recommended = base_sizes.get(density_type, 1500)
-            ratio = recommended / 1500
-            adapted_chunk_size = max(600, min(int(chunk_size * ratio), 2000))
-
-            _log.info(
-                f"[INGEST] Content density: {density_type} "
-                f"(score={density_score:.2f}) → chunk_size={adapted_chunk_size}"
-            )
-
-            # Utiliser le smart chunking générique adaptatif
+            # CAS 2 — Chunking générique
             smart_chunks = smart_chunk_generic(
                 text,
                 source_file=base_name,
@@ -408,114 +348,154 @@ def ingest_documents(
                 preserve_headers=True,
             )
 
-            # Augmenter les chunks SANS recalculer la densité
             smart_chunks = augment_chunks(
                 smart_chunks,
                 add_keywords=True,
                 add_key_phrases=True,
-                add_density_info=False,  # Désactivé - on passe la densité document
+                add_density_info=False,
             )
 
-            # Ajouter la densité du document à tous les chunks
             for chunk in smart_chunks:
                 chunk["density_type"] = density_type
                 chunk["density_score"] = density_score
 
-            # Ajouter les cross-références
             smart_chunks = add_cross_references_to_chunks(smart_chunks)
-
-            _log.info(f"[INGEST] Adaptive generic chunking: {len(smart_chunks)} augmented chunks")
 
             for smart_chunk in smart_chunks:
                 ch = smart_chunk.get("text", "")
-                chunk_idx = smart_chunk.get("chunk_index", 0)
-                header = smart_chunk.get("header", "")
-
-                # Données d'augmentation
-                keywords = smart_chunk.get("keywords", [])
-                density_type = smart_chunk.get("density_type", "")
-                density_score = smart_chunk.get("density_score", 0)
-                references_to = smart_chunk.get("references_to", [])
-
                 if not ch:
                     continue
+
+                chunk_idx = smart_chunk.get("chunk_index", 0)
+                header = smart_chunk.get("header", "")
+                keywords = smart_chunk.get("keywords", [])
+                references_to = smart_chunk.get("references_to", [])
 
                 chunk_id = f"{base_name}_chunk_{chunk_idx}"
                 faiss_id = f"{chunk_id}__{uuid.uuid4().hex[:8]}"
 
-                chunks.append(ch)
-                metas.append(
-                    {
-                        "source_file": base_name,
-                        "path": logical_paths.get(path, path) if logical_paths else path,
-                        "chunk_id": chunk_id,
-                        "section_id": header[:50] if header else "",  # Utiliser le header détecté
-                        "section_kind": smart_chunk.get("type", ""),
-                        "section_title": header if header else "",
-                        "language": language,
-                        # Métadonnées d'augmentation
-                        "keywords": keywords[:10] if keywords else [],
-                        "density_type": density_type,
-                        "density_score": density_score,
-                        # Cross-références vers d'autres sections
-                        "references_to": references_to[:5] if references_to else [],
-                    }
-                )
-                faiss_ids.append(faiss_id)
+                chunks_list.append(ch)
+                metas_list.append({
+                    "source_file": base_name,
+                    "path": log_paths.get(path, path) if log_paths else path,
+                    "chunk_id": chunk_id,
+                    "section_id": header[:50] if header else "",
+                    "section_kind": smart_chunk.get("type", ""),
+                    "section_title": header if header else "",
+                    "language": language,
+                    "keywords": keywords[:10] if keywords else [],
+                    "density_type": density_type,
+                    "density_score": density_score,
+                    "references_to": references_to[:5] if references_to else [],
+                })
+                faiss_ids_list.append(faiss_id)
 
-        if not chunks:
-            _log.warning(f"[INGEST] No chunks generated for {path}")
-            continue
+        return {
+            "path": path,
+            "base_name": base_name,
+            "chunks": chunks_list,
+            "metas": metas_list,
+            "faiss_ids": faiss_ids_list,
+            "language": language,
+            "sections_detected": bool(sections),
+            "num_chunks": len(chunks_list),
+        }
 
-        # --------------------------------------------------------------
-        # Compute embeddings
-        # --------------------------------------------------------------
-        _log.info(f"[INGEST] Embedding {len(chunks)} chunks for {path}")
+    # ------------------------------------------------------------------
+    # Traitement PARALLÈLE des fichiers (chunking + augmentation)
+    # ------------------------------------------------------------------
+    total_loaded = len(loaded_files)
+    chunking_workers = min(multiprocessing.cpu_count(), total_loaded, 8)
+    _log.info(f"[INGEST] Starting parallel chunking with {chunking_workers} workers for {total_loaded} files")
+
+    # Préparer les arguments pour chaque fichier
+    chunking_args = [
+        (path, loaded_files[path], use_easa_sections, chunk_size, logical_paths)
+        for path in file_paths if path in loaded_files
+    ]
+
+    # Exécuter le chunking en parallèle
+    all_file_results = []
+    with ThreadPoolExecutor(max_workers=chunking_workers) as executor:
+        futures = {executor.submit(_chunk_single_file, args): args[0] for args in chunking_args}
+
+        completed = 0
+        for future in as_completed(futures):
+            path = futures[future]
+            try:
+                result = future.result()
+                if result["num_chunks"] > 0:
+                    all_file_results.append(result)
+                    _log.info(f"[INGEST] Chunked {result['base_name']}: {result['num_chunks']} chunks")
+                else:
+                    _log.warning(f"[INGEST] No chunks generated for {path}")
+            except Exception as e:
+                _log.error(f"[INGEST] Error chunking {path}: {e}")
+
+            completed += 1
+            if progress_callback:
+                progress_fraction = 0.3 + (0.3 * completed / total_loaded)  # 30-60% pour chunking
+                progress_callback(progress_fraction, f"🔄 Chunking: {completed}/{total_loaded}")
+
+    _log.info(f"[INGEST] Parallel chunking complete: {len(all_file_results)} files with chunks")
+
+    # ------------------------------------------------------------------
+    # Agrégation et Embedding de tous les chunks
+    # ------------------------------------------------------------------
+    all_chunks = []
+    all_metas = []
+    all_faiss_ids = []
+
+    for result in all_file_results:
+        all_chunks.extend(result["chunks"])
+        all_metas.extend(result["metas"])
+        all_faiss_ids.extend(result["faiss_ids"])
+        file_reports.append({
+            "file": result["base_name"],
+            "num_chunks": result["num_chunks"],
+            "language": result["language"],
+            "sections_detected": result["sections_detected"],
+        })
+
+    if not all_chunks:
+        _log.warning("[INGEST] No chunks generated from any file")
+    else:
+        # Embedding de tous les chunks en une seule passe (déjà parallélisé)
+        _log.info(f"[INGEST] Embedding {len(all_chunks)} total chunks")
+        if progress_callback:
+            progress_callback(0.6, f"🧠 Embedding {len(all_chunks)} chunks...")
+
         embeddings = embed_in_batches(
-            texts=chunks,
-            role="doc",          # -> embed_documents côté client
+            texts=all_chunks,
+            role="doc",
             batch_size=BATCH_SIZE,
             emb_client=emb_client,
             log=_log,
             dry_run=False,
         )
 
-        # --------------------------------------------------------------
         # Push to FAISS in batches
-        # --------------------------------------------------------------
         max_batch = 4000
-        n = len(chunks)
+        n = len(all_chunks)
         _log.info(f"[INGEST] Adding {n} embeddings to FAISS in batches of {max_batch}")
+
+        if progress_callback:
+            progress_callback(0.9, f"💾 Indexation FAISS...")
 
         for start in range(0, n, max_batch):
             end = start + max_batch
             _log.debug(f"[INGEST] FAISS add batch {start}:{end}")
             col.add(
-                documents=chunks[start:end],
-                metadatas=metas[start:end],
+                documents=all_chunks[start:end],
+                metadatas=all_metas[start:end],
                 embeddings=embeddings[start:end].tolist(),
-                ids=faiss_ids[start:end],
+                ids=all_faiss_ids[start:end],
             )
 
-        total_chunks += len(chunks)
-        file_reports.append(
-            {
-                "file": base_name,
-                "num_chunks": len(chunks),
-                "language": language,
-                "sections_detected": bool(sections),
-            }
-        )
+        total_chunks = len(all_chunks)
 
-        # Mise à jour de la progression après traitement complet du fichier
-        processed_count += 1
         if progress_callback:
-            # 30-100% pour le chunking et embedding
-            progress_fraction = 0.3 + (0.7 * (processed_count / total_loaded))
-            progress_callback(
-                progress_fraction,
-                f"✅ Indexation: {processed_count}/{total_loaded} - {base_name} ({len(chunks)} chunks)"
-            )
+            progress_callback(0.95, f"✅ {total_chunks} chunks indexés")
 
     _log.info("[INGEST] Completed")
 
