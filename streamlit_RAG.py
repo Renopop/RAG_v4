@@ -52,8 +52,15 @@ logger = make_logger(debug=False)
 
 
 # =====================================================================
-#  CACHE POUR LES REQUÊTES RAG (amélioration performance)
+#  CACHE POUR LES RESSOURCES ET REQUÊTES RAG (amélioration performance)
 # =====================================================================
+
+@st.cache_resource(ttl=600, show_spinner=False)  # Cache 10 minutes (singleton)
+def get_cached_faiss_store(db_path: str):
+    """Retourne un store FAISS caché pour éviter les reconstructions."""
+    return build_faiss_store(db_path)
+
+
 @st.cache_data(ttl=1800, show_spinner=False)  # Cache 30 minutes
 def cached_rag_query(
     db_path: str,
@@ -245,6 +252,7 @@ def get_lock_info(base_root: str, base_name: str) -> Optional[Dict[str, str]]:
 #   Utils CSV / bases / collections
 # ========================
 
+@st.cache_data(ttl=300, show_spinner=False)  # Cache 5 minutes
 def list_bases(base_root: str) -> List[str]:
     """Liste les bases FAISS (sous-dossiers) dans base_root."""
     p = Path(base_root)
@@ -253,17 +261,19 @@ def list_bases(base_root: str) -> List[str]:
     return sorted([d.name for d in p.iterdir() if d.is_dir()])
 
 
+@st.cache_data(ttl=300, show_spinner=False)  # Cache 5 minutes
 def list_collections_for_base(base_root: str, base_name: str) -> List[str]:
     """Liste les collections d'une base donnée (en interrogeant FAISS)."""
     db_path = os.path.join(base_root, base_name)
     try:
-        store = build_faiss_store(db_path)
+        store = get_cached_faiss_store(db_path)
         colls = store.list_collections()  # FAISS retourne directement une liste de noms
         return sorted(colls)
     except Exception:
         return []
 
 
+@st.cache_data(ttl=300, show_spinner=False)  # Cache 5 minutes
 def get_collection_doc_counts(base_root: str, base_name: str) -> Dict[str, int]:
     """
     Retourne un dict {nom_collection: nombre_d'éléments} pour une base donnée.
@@ -272,7 +282,7 @@ def get_collection_doc_counts(base_root: str, base_name: str) -> Dict[str, int]:
     db_path = os.path.join(base_root, base_name)
     counts: Dict[str, int] = {}
     try:
-        store = build_faiss_store(db_path)
+        store = get_cached_faiss_store(db_path)
         for col_name in store.list_collections():  # FAISS retourne directement les noms
             try:
                 collection = store.get_collection(col_name)
