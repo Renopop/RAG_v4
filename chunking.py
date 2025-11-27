@@ -71,6 +71,31 @@ STOPWORDS = {
 
 
 # =====================================================================
+#  REGEX COMPILÉS (optimisation performance)
+# =====================================================================
+
+# Regex pour extraction de mots
+_RE_WORDS = re.compile(r'\b[a-zA-ZÀ-ÿ]{2,}\b')
+_RE_WORDS_3PLUS = re.compile(r'\b[a-zA-ZÀ-ÿ]{3,}\b')
+# Regex pour nombres et formules
+_RE_NUMBERS = re.compile(r'\d+(?:\.\d+)?')
+_RE_FORMULAS = re.compile(r'[=<>≤≥±×÷∑∏√∫]')
+# Regex pour phrases
+_RE_SENTENCES = re.compile(r'[.!?]+')
+# Regex pour listes
+_RE_LIST_ITEMS = re.compile(r'^\s*[-*•]\s+|\(\s*[a-z0-9]+\s*\)|\b\d+[.)]\s+', re.MULTILINE)
+# Regex pour références EASA
+_RE_EASA_REFS = re.compile(r'\b(?:CS|AMC|GM)[-\s]?\d+(?:[.\-]\d+)*[A-Za-z]?', re.IGNORECASE)
+# Regex pour majuscules
+_RE_UPPERCASE = re.compile(r'\b[A-Z]{2,}\b')
+# Regex pour parenthèses
+_RE_BRACKETS = re.compile(r'[()[\]{}]')
+# Regex pour key_phrases
+_RE_DEFINITIONS = re.compile(r'[^.]*(?:means|is defined as|refers to|shall be|is the)[^.]*\.', re.IGNORECASE)
+_RE_REQUIREMENTS = re.compile(r'[^.]*(?:shall|must|require[sd]?|mandatory)[^.]*\.', re.IGNORECASE)
+
+
+# =====================================================================
 #  ANALYSE DE DENSITÉ DU CONTENU
 # =====================================================================
 
@@ -97,7 +122,7 @@ def _calculate_content_density(text: str) -> Dict[str, Any]:
         }
 
     text_lower = text.lower()
-    words = re.findall(r'\b[a-zA-ZÀ-ÿ]{2,}\b', text_lower)
+    words = _RE_WORDS.findall(text_lower)
     total_words = len(words) if words else 1
 
     metrics = {}
@@ -107,30 +132,30 @@ def _calculate_content_density(text: str) -> Dict[str, Any]:
     metrics["technical_ratio"] = technical_count / total_words
 
     # 2. Ratio de nombres et formules
-    numbers = re.findall(r'\d+(?:\.\d+)?', text)
-    formulas = re.findall(r'[=<>≤≥±×÷∑∏√∫]', text)
+    numbers = _RE_NUMBERS.findall(text)
+    formulas = _RE_FORMULAS.findall(text)
     metrics["numeric_ratio"] = (len(numbers) + len(formulas) * 3) / max(len(text), 1) * 100
 
     # 3. Longueur moyenne des phrases
-    sentences = re.split(r'[.!?]+', text)
+    sentences = _RE_SENTENCES.split(text)
     sentences = [s.strip() for s in sentences if s.strip()]
     avg_sentence_len = sum(len(s) for s in sentences) / max(len(sentences), 1)
     metrics["avg_sentence_length"] = avg_sentence_len
 
     # 4. Présence de listes (items numérotés ou à puces)
-    list_items = len(re.findall(r'^\s*[-*•]\s+|\(\s*[a-z0-9]+\s*\)|\b\d+[.)]\s+', text, re.MULTILINE))
+    list_items = len(_RE_LIST_ITEMS.findall(text))
     metrics["list_density"] = list_items / max(len(sentences), 1)
 
     # 5. Références EASA (CS xx.xxx, AMC, GM)
-    refs = len(re.findall(r'\b(?:CS|AMC|GM)[-\s]?\d+[.\d]*', text, re.IGNORECASE))
+    refs = len(_RE_EASA_REFS.findall(text))
     metrics["reference_density"] = refs / total_words * 100
 
     # 6. Ratio majuscules (acronymes, titres)
-    upper_words = len(re.findall(r'\b[A-Z]{2,}\b', text))
+    upper_words = len(_RE_UPPERCASE.findall(text))
     metrics["uppercase_ratio"] = upper_words / total_words
 
     # 7. Densité de parenthèses/crochets (souvent formules ou références)
-    brackets = len(re.findall(r'[()[\]{}]', text))
+    brackets = len(_RE_BRACKETS.findall(text))
     metrics["bracket_density"] = brackets / max(len(text), 1) * 100
 
     # Calculer le score de densité (0-1, plus haut = plus dense)
@@ -199,25 +224,16 @@ def _get_adaptive_chunk_size(
 def _extract_keywords(text: str, max_keywords: int = 10) -> List[str]:
     """
     Extrait les mots-clés importants d'un texte.
-
-    Utilise une approche TF simple avec filtrage des stopwords
-    et priorisation des termes techniques.
-
-    Args:
-        text: Texte source
-        max_keywords: Nombre max de mots-clés
-
-    Returns:
-        Liste de mots-clés ordonnés par importance
+    Utilise des regex compilés pour la performance.
     """
     if not text or len(text) < 20:
         return []
 
-    # Tokenisation basique
-    words = re.findall(r'\b[a-zA-ZÀ-ÿ]{3,}\b', text.lower())
+    # Tokenisation avec regex compilé
+    words = _RE_WORDS_3PLUS.findall(text.lower())
 
     # Filtrer les stopwords
-    filtered_words = [w for w in words if w not in STOPWORDS and len(w) >= 3]
+    filtered_words = [w for w in words if w not in STOPWORDS]
 
     # Compter les fréquences
     word_counts = Counter(filtered_words)
@@ -228,44 +244,32 @@ def _extract_keywords(text: str, max_keywords: int = 10) -> List[str]:
         score = count
         if word in TECHNICAL_INDICATORS:
             score *= 2.0
-        # Bonus pour les mots plus longs (souvent plus spécifiques)
         if len(word) > 8:
             score *= 1.3
         scored_words[word] = score
 
-    # Extraire aussi les codes de référence (CS 25.xxx, etc.)
-    refs = re.findall(r'\b(?:CS|AMC|GM)[-\s]?\d+(?:[.\-]\d+)*[A-Za-z]?', text, re.IGNORECASE)
-    ref_keywords = list(set(r.upper().replace(" ", " ") for r in refs))[:3]
+    # Extraire les codes de référence avec regex compilé
+    refs = _RE_EASA_REFS.findall(text)
+    ref_keywords = list(set(r.upper() for r in refs))[:3]
 
     # Trier par score et prendre les top
     sorted_words = sorted(scored_words.items(), key=lambda x: x[1], reverse=True)
     keywords = [w for w, _ in sorted_words[:max_keywords - len(ref_keywords)]]
 
-    # Ajouter les références en premier
     return ref_keywords + keywords
 
 
 def _extract_key_phrases(text: str, max_phrases: int = 5) -> List[str]:
     """
     Extrait les phrases ou segments clés d'un texte.
-
-    Returns:
-        Liste de phrases/segments importants
+    Utilise des regex compilés pour la performance.
     """
     if not text or len(text) < 50:
         return []
 
-    # Chercher les définitions (contient "means", "is defined", "refers to")
-    definitions = re.findall(
-        r'[^.]*(?:means|is defined as|refers to|shall be|is the)[^.]*\.',
-        text, re.IGNORECASE
-    )
-
-    # Chercher les exigences (contient "shall", "must", "require")
-    requirements = re.findall(
-        r'[^.]*(?:shall|must|require[sd]?|mandatory)[^.]*\.',
-        text, re.IGNORECASE
-    )
+    # Chercher avec regex compilés
+    definitions = _RE_DEFINITIONS.findall(text)
+    requirements = _RE_REQUIREMENTS.findall(text)
 
     # Combiner et dédupliquer
     all_phrases = []
@@ -273,7 +277,7 @@ def _extract_key_phrases(text: str, max_phrases: int = 5) -> List[str]:
 
     for phrase in definitions + requirements:
         phrase = phrase.strip()
-        if len(phrase) > 20 and len(phrase) < 300 and phrase not in seen:
+        if 20 < len(phrase) < 300 and phrase not in seen:
             all_phrases.append(phrase)
             seen.add(phrase)
             if len(all_phrases) >= max_phrases:
