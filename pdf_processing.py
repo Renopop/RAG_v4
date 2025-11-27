@@ -433,16 +433,23 @@ def _clean_pdf_text_noise(text: str) -> str:
 def extract_text_from_pdf(
     path: str,
     progress_cb: Optional[ProgressFn] = None,
+    extract_tables: bool = True,
 ) -> str:
     """
     Extraction texte robuste depuis un PDF en conservant les sauts de ligne.
 
     Stratégie :
-      1) tentative avec pdfplumber (meilleure gestion des tableaux)
+      1) tentative avec pdfplumber (meilleure gestion des tableaux) - si extract_tables=True
       2) si erreur → fallback pdfminer
       3) si texte suspect → fallback PyMuPDF et choix du meilleur
       4) nettoyage des headers/footers répétés
       5) nettoyage léger du bruit (watermarks récurrents, texte vertical très bruité)
+
+    Args:
+        path: Chemin vers le fichier PDF
+        progress_cb: Callback de progression optionnel
+        extract_tables: Si True, utilise pdfplumber pour extraire les tableaux (plus lent).
+                       Si False, utilise directement pdfminer (plus rapide).
     """
     if progress_cb:
         progress_cb(0.05, f"Ouverture PDF : {os.path.basename(path)}")
@@ -450,8 +457,8 @@ def extract_text_from_pdf(
     text_final: str = ""
     extraction_method: str = ""
 
-    # 1) Tentative pdfplumber (meilleure gestion des tableaux)
-    if PDFPLUMBER_AVAILABLE:
+    # 1) Tentative pdfplumber (meilleure gestion des tableaux) - seulement si demandé
+    if extract_tables and PDFPLUMBER_AVAILABLE:
         try:
             text_final = _extract_with_pdfplumber(path)
             extraction_method = "pdfplumber"
@@ -460,7 +467,7 @@ def extract_text_from_pdf(
             logging.warning(f"[pdf_processing] Erreur pdfplumber sur {path}: {e}")
             text_final = ""
 
-    # 2) Fallback pdfminer si pdfplumber a échoué ou n'est pas disponible
+    # 2) Fallback pdfminer si pdfplumber a échoué, non utilisé ou non disponible
     if not text_final or _is_text_suspect(text_final):
         try:
             laparams = LAParams()
