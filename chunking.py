@@ -15,6 +15,8 @@ import re
 import math
 from typing import List, Dict, Any, Optional, Tuple
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
+import multiprocessing
 
 # =====================================================================
 #  CONSTANTES POUR CHUNKING ADAPTATIF
@@ -326,9 +328,22 @@ def augment_chunk(
 
 def augment_chunks(chunks: List[Dict[str, Any]], **kwargs) -> List[Dict[str, Any]]:
     """
-    Augmente une liste de chunks avec des métadonnées.
+    Augmente une liste de chunks avec des métadonnées (parallélisé).
     """
-    return [augment_chunk(chunk, **kwargs) for chunk in chunks]
+    if len(chunks) < 10:
+        # Pas de parallélisme pour peu de chunks
+        return [augment_chunk(chunk, **kwargs) for chunk in chunks]
+
+    # Paralléliser l'augmentation pour beaucoup de chunks
+    max_workers = min(multiprocessing.cpu_count(), len(chunks), 8)
+
+    def _augment_with_kwargs(chunk):
+        return augment_chunk(chunk, **kwargs)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        results = list(executor.map(_augment_with_kwargs, chunks))
+
+    return results
 
 
 # =====================================================================
@@ -1575,9 +1590,19 @@ def add_cross_references_to_chunk(chunk: Dict[str, Any]) -> Dict[str, Any]:
 
 def add_cross_references_to_chunks(chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    Ajoute les références croisées à une liste de chunks.
+    Ajoute les références croisées à une liste de chunks (parallélisé).
     """
-    return [add_cross_references_to_chunk(chunk) for chunk in chunks]
+    if len(chunks) < 10:
+        # Pas de parallélisme pour peu de chunks
+        return [add_cross_references_to_chunk(chunk) for chunk in chunks]
+
+    # Paralléliser pour beaucoup de chunks
+    max_workers = min(multiprocessing.cpu_count(), len(chunks), 8)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        results = list(executor.map(add_cross_references_to_chunk, chunks))
+
+    return results
 
 
 def build_reference_index(chunks: List[Dict[str, Any]]) -> Dict[str, List[int]]:
