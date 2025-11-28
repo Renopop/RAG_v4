@@ -563,18 +563,32 @@ class FaissCollection:
         index_save_path = os.path.join(save_path, "index.faiss")
         metadata_save_path = os.path.join(save_path, "metadata.json")
 
+        logger.info(f"[FAISS] Saving to: {save_path}")
+        logger.info(f"[FAISS] Index path: {index_save_path}")
+        logger.info(f"[FAISS] Metadata path: {metadata_save_path}")
+
         # S'assurer que le répertoire existe (critique pour les partages réseau Windows)
         os.makedirs(save_path, exist_ok=True)
 
-        # Sauvegarder l'index FAISS
-        faiss.write_index(self.index, index_save_path)
+        try:
+            # Sauvegarder l'index FAISS
+            faiss.write_index(self.index, index_save_path)
+            logger.info(f"[FAISS] ✅ Index saved successfully")
+        except Exception as e:
+            logger.error(f"[FAISS] ❌ Failed to save index: {e}")
+            raise
 
-        # Sauvegarder les métadonnées
-        with open(metadata_save_path, "w", encoding="utf-8") as f:
-            json.dump({
-                "metadata": self.metadata,
-                "ids": self.ids
-            }, f, ensure_ascii=False, indent=2)
+        try:
+            # Sauvegarder les métadonnées
+            with open(metadata_save_path, "w", encoding="utf-8") as f:
+                json.dump({
+                    "metadata": self.metadata,
+                    "ids": self.ids
+                }, f, ensure_ascii=False, indent=2)
+            logger.info(f"[FAISS] ✅ Metadata saved successfully")
+        except Exception as e:
+            logger.error(f"[FAISS] ❌ Failed to save metadata: {e}")
+            raise
 
         logger.info(f"[FAISS] Saved index and metadata to {save_path}")
 
