@@ -1469,19 +1469,37 @@ with tab_confluence:
         st.markdown("---")
         st.markdown("### 1️⃣ Connexion à Confluence")
 
-        col_url, col_context = st.columns([3, 1])
-        with col_url:
-            confluence_url = st.text_input(
-                "URL Confluence",
-                placeholder="https://votre-entreprise.atlassian.net",
-                help="URL de base de votre instance Confluence (Cloud ou Server)"
-            )
-        with col_context:
-            confluence_context_path = st.text_input(
-                "Chemin contexte",
-                placeholder="/confluence",
-                help="Chemin de contexte pour Confluence Server (ex: /confluence, /wiki). Laisser vide pour Cloud."
-            )
+        confluence_url_input = st.text_input(
+            "URL Confluence",
+            placeholder="https://confluence.entreprise.com/confluence/display/PROJ/Page",
+            help="Collez n'importe quelle URL Confluence depuis votre navigateur (page, espace, accueil...)"
+        )
+
+        # Auto-extraction de l'URL de base et du context path
+        def parse_confluence_url(url: str) -> tuple:
+            """Extrait base_url et context_path depuis une URL Confluence."""
+            if not url:
+                return "", ""
+            url = url.strip()
+            from urllib.parse import urlparse
+            parsed = urlparse(url)
+            base = f"{parsed.scheme}://{parsed.netloc}"
+            path = parsed.path
+
+            # Chercher les patterns Confluence connus dans le chemin
+            patterns = ["/display/", "/pages/", "/spaces/", "/rest/api/", "/wiki/", "/confluence/"]
+            context_path = ""
+            for pattern in patterns:
+                if pattern in path:
+                    idx = path.find(pattern)
+                    context_path = path[:idx] if idx > 0 else ""
+                    break
+            return base, context_path.rstrip("/")
+
+        confluence_url, confluence_context_path = parse_confluence_url(confluence_url_input)
+
+        if confluence_url_input and confluence_url:
+            st.caption(f"🔗 Base détectée: `{confluence_url}` | Contexte: `{confluence_context_path or '(aucun)'}`")
 
         col_user, col_pwd = st.columns(2)
         with col_user:
@@ -1509,17 +1527,16 @@ with tab_confluence:
             if st.button("🔗 Tester la connexion", disabled=not (confluence_url and confluence_user and confluence_password)):
                 with st.spinner("Test de connexion..."):
                     verify_ssl = not confluence_skip_ssl
-                    ctx_path = confluence_context_path.strip() if confluence_context_path else ""
-                    result = test_confluence_connection(confluence_url, confluence_user, confluence_password, verify_ssl=verify_ssl, context_path=ctx_path)
+                    result = test_confluence_connection(confluence_url, confluence_user, confluence_password, verify_ssl=verify_ssl, context_path=confluence_context_path)
                     if result["success"]:
                         st.session_state.confluence_connected = True
                         st.session_state.confluence_url = confluence_url
                         st.session_state.confluence_user = confluence_user
                         st.session_state.confluence_password = confluence_password
                         st.session_state.confluence_verify_ssl = verify_ssl
-                        st.session_state.confluence_context_path = ctx_path
+                        st.session_state.confluence_context_path = confluence_context_path
                         # Charger la liste des espaces
-                        st.session_state.confluence_spaces = list_spaces(confluence_url, confluence_user, confluence_password, verify_ssl=verify_ssl, context_path=ctx_path)
+                        st.session_state.confluence_spaces = list_spaces(confluence_url, confluence_user, confluence_password, verify_ssl=verify_ssl, context_path=confluence_context_path)
                         st.success(result["message"])
                     else:
                         st.session_state.confluence_connected = False
