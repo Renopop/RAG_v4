@@ -686,22 +686,23 @@ with tab_ingest:
         ])
 
     if available_csvs:
-        # Bouton pour mise à jour globale de toutes les bases
-        col_update_all, col_count = st.columns([2, 1])
-        with col_update_all:
-            if st.button(
-                "🔄 Mise à jour de toutes les bases",
-                type="primary",
-                use_container_width=True,
-                help="Traite automatiquement TOUS les fichiers CSV du répertoire"
-            ):
-                st.session_state["bulk_update_all"] = True
-                st.rerun()
-        with col_count:
-            st.info(f"📊 **{len(available_csvs)}** CSV disponibles")
+        # Bouton pour mise à jour globale de toutes les bases (admin uniquement)
+        if current_user == ADMIN_USER:
+            col_update_all, col_count = st.columns([2, 1])
+            with col_update_all:
+                if st.button(
+                    "🔄 Mise à jour de toutes les bases",
+                    type="primary",
+                    use_container_width=True,
+                    help="Traite automatiquement TOUS les fichiers CSV du répertoire"
+                ):
+                    st.session_state["bulk_update_all"] = True
+                    st.rerun()
+            with col_count:
+                st.info(f"📊 **{len(available_csvs)}** CSV disponibles")
 
-        # Si mise à jour globale demandée, pré-sélectionner tous les CSV
-        if st.session_state.get("bulk_update_all", False):
+        # Si mise à jour globale demandée (admin uniquement), pré-sélectionner tous les CSV
+        if current_user == ADMIN_USER and st.session_state.get("bulk_update_all", False):
             st.warning(f"⚠️ **Mise à jour globale** : {len(available_csvs)} fichiers CSV seront traités. Cela peut prendre plusieurs minutes.")
             default_selection = available_csvs
         else:
@@ -714,8 +715,8 @@ with tab_ingest:
             help=f"Sélectionnez un ou plusieurs CSV depuis {CSV_IMPORT_DIR}"
         )
 
-        # Bouton pour annuler la sélection globale
-        if st.session_state.get("bulk_update_all", False):
+        # Bouton pour annuler la sélection globale (admin uniquement)
+        if current_user == ADMIN_USER and st.session_state.get("bulk_update_all", False):
             if st.button("❌ Annuler la sélection globale"):
                 st.session_state["bulk_update_all"] = False
                 st.rerun()
