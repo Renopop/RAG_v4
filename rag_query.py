@@ -444,7 +444,7 @@ def run_rag_query(
     num_query_variations: int = 3,
     use_bge_reranker: bool = True,
     use_context_expansion: bool = True,
-    use_local_cache: bool = False,
+    use_local_cache: bool = True,  # Automatique: utilise le cache local si disponible
 ) -> Dict[str, Any]:
     """
     RAG "haut niveau" :
