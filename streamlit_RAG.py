@@ -666,6 +666,70 @@ if current_user in allowed_users:
                     cache_mgr.clear_all_cache()
                     st.rerun()
 
+        st.markdown("---")
+
+        # ========================
+        #   SECTION DOCUMENTATION
+        # ========================
+        st.markdown("### 📖 Documentation")
+        st.caption("Accédez aux guides et documentation")
+
+        # Définir les fichiers de documentation
+        DOC_FILES = {
+            "📋 README": "README.md",
+            "👤 Guide Utilisateur": "GUIDE_UTILISATEUR.md",
+            "🔧 Architecture Technique": "ARCHITECTURE_TECHNIQUE.md",
+            "🌐 Installation Réseau": "INSTALLATION_RESEAU.md"
+        }
+
+        # Selectbox pour choisir le document
+        selected_doc = st.selectbox(
+            "Choisir un document",
+            options=list(DOC_FILES.keys()),
+            key="doc_select"
+        )
+
+        # Bouton pour afficher le document sélectionné
+        if st.button("📄 Afficher", type="primary", use_container_width=True):
+            doc_file = DOC_FILES[selected_doc]
+            doc_path = os.path.join(os.path.dirname(__file__), doc_file)
+            st.session_state["show_doc"] = doc_path
+            st.session_state["show_doc_title"] = selected_doc
+
+        # Bouton pour fermer le document
+        if st.session_state.get("show_doc"):
+            if st.button("❌ Fermer doc", use_container_width=True):
+                st.session_state["show_doc"] = None
+                st.session_state["show_doc_title"] = None
+                st.rerun()
+
+
+# ========================
+#   AFFICHAGE DOCUMENTATION
+# ========================
+if st.session_state.get("show_doc"):
+    doc_path = st.session_state["show_doc"]
+    doc_title = st.session_state.get("show_doc_title", "Documentation")
+
+    st.markdown(f"## {doc_title}")
+    st.markdown("---")
+
+    try:
+        with open(doc_path, "r", encoding="utf-8") as f:
+            doc_content = f.read()
+        st.markdown(doc_content)
+    except FileNotFoundError:
+        st.error(f"❌ Fichier non trouvé : {doc_path}")
+    except Exception as e:
+        st.error(f"❌ Erreur lors de la lecture : {e}")
+
+    st.markdown("---")
+    if st.button("🔙 Retour à l'application", type="primary"):
+        st.session_state["show_doc"] = None
+        st.session_state["show_doc_title"] = None
+        st.rerun()
+
+    st.stop()  # Arrête le rendu du reste de la page
 
 # ========================
 #   TABS
