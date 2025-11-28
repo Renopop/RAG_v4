@@ -18,6 +18,7 @@ import getpass
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Tuple, Callable, Optional
+from contextlib import nullcontext
 
 import streamlit as st
 
@@ -479,35 +480,59 @@ if not is_config_valid(_config):
 #   APPLICATION PRINCIPALE
 # ========================
 
+# Utilisateur admin (seul à voir tous les onglets)
+ADMIN_USER = "agdgtrl"
+current_user = getpass.getuser().lower()
+
 st.title("RaGME_UP - PROP")
 
 # ========================
-#   GUIDE UTILISATEUR
+#   DOCUMENTATION ET AIDE (sous le titre)
 # ========================
-with st.expander("📖 **GUIDE UTILISATEUR** - Cliquez pour afficher l'aide", expanded=False):
-    try:
-        with open("GUIDE_UTILISATEUR.md", "r", encoding="utf-8") as f:
-            guide_content = f.read()
-        st.markdown(guide_content)
-    except FileNotFoundError:
-        st.error("❌ Le fichier GUIDE_UTILISATEUR.md est introuvable.")
-    except Exception as e:
-        st.error(f"❌ Erreur lors du chargement du guide : {e}")
+DOC_FILES = {
+    "📋 README": "README.md",
+    "👤 Guide Utilisateur": "GUIDE_UTILISATEUR.md",
+    "🔧 Architecture Technique": "ARCHITECTURE_TECHNIQUE.md",
+    "🌐 Installation Réseau": "INSTALLATION_RESEAU.md"
+}
+
+col_doc, col_help = st.columns([3, 1])
+with col_doc:
+    selected_doc = st.selectbox(
+        "📚 Documentation",
+        options=[""] + list(DOC_FILES.keys()),
+        format_func=lambda x: "Choisir un document..." if x == "" else x,
+        key="doc_select_main"
+    )
+with col_help:
+    with st.expander("❓ Aide"):
+        st.markdown("""
+        **Onglets :**
+        - **Gestion CSV** : Créer/modifier CSV
+        - **Ingestion** : Charger documents
+        - **Questions RAG** : Interroger
+        """)
+
+if selected_doc and selected_doc in DOC_FILES:
+    doc_path = os.path.join(os.path.dirname(__file__), DOC_FILES[selected_doc])
+    with st.expander(f"📄 {selected_doc}", expanded=True):
+        try:
+            with open(doc_path, "r", encoding="utf-8") as f:
+                st.markdown(f.read())
+        except Exception as e:
+            st.error(f"❌ Erreur : {e}")
 
 # ========================
-#   SIDEBAR
+#   SIDEBAR (admin uniquement)
 # ========================
-
-# Vérifier l'utilisateur pour afficher la sidebar
-current_user = getpass.getuser().lower()
-allowed_users = ["agdgtrl", "renau"]
 
 # Définir les variables par défaut (utilisées même si sidebar cachée)
 base_root = BASE_ROOT_DIR
 bases = list_bases(base_root)
 use_easa_sections = st.session_state.get("use_easa_sections", False)
 
-if current_user in allowed_users:
+# Sidebar visible uniquement pour admin
+if current_user == ADMIN_USER:
     with st.sidebar:
         st.header("⚙️ Configuration globale")
 
@@ -533,88 +558,22 @@ if current_user in allowed_users:
         st.caption(f"🔹 Embeddings : **Snowflake** – `{EMBED_MODEL}`")
         st.caption(f"🔹 LLM : **DALLEM** – `{LLM_MODEL}`")
 
-        st.markdown("---")
-
-        # ========================
-        #   SECTION RAGME_UP - PROP
-        # ========================
-        st.markdown("### 🚀 RaGME_UP - PROP")
-        st.caption("Documentation et aide")
-
-        # Définir les fichiers de documentation
-        DOC_FILES = {
-            "📋 README": "README.md",
-            "👤 Guide Utilisateur": "GUIDE_UTILISATEUR.md",
-            "🔧 Architecture Technique": "ARCHITECTURE_TECHNIQUE.md",
-            "🌐 Installation Réseau": "INSTALLATION_RESEAU.md"
-        }
-
-        # Selectbox pour choisir le document
-        selected_doc = st.selectbox(
-            "Choisir un document",
-            options=list(DOC_FILES.keys()),
-            key="doc_select"
-        )
-
-        # Bouton pour afficher le document sélectionné
-        if st.button("📄 Afficher", type="primary", use_container_width=True):
-            doc_file = DOC_FILES[selected_doc]
-            doc_path = os.path.join(os.path.dirname(__file__), doc_file)
-            st.session_state["show_doc"] = doc_path
-            st.session_state["show_doc_title"] = selected_doc
-
-        # Bouton pour fermer le document
-        if st.session_state.get("show_doc"):
-            if st.button("❌ Fermer doc", use_container_width=True):
-                st.session_state["show_doc"] = None
-                st.session_state["show_doc_title"] = None
-                st.rerun()
-
-
-# ========================
-#   AFFICHAGE DOCUMENTATION
-# ========================
-if st.session_state.get("show_doc"):
-    doc_path = st.session_state["show_doc"]
-    doc_title = st.session_state.get("show_doc_title", "Documentation")
-
-    st.markdown(f"## {doc_title}")
-    st.markdown("---")
-
-    try:
-        with open(doc_path, "r", encoding="utf-8") as f:
-            doc_content = f.read()
-        st.markdown(doc_content)
-    except FileNotFoundError:
-        st.error(f"❌ Fichier non trouvé : {doc_path}")
-    except Exception as e:
-        st.error(f"❌ Erreur lors de la lecture : {e}")
-
-    st.markdown("---")
-    if st.button("🔙 Retour à l'application", type="primary"):
-        st.session_state["show_doc"] = None
-        st.session_state["show_doc_title"] = None
-        st.rerun()
-
-    st.stop()  # Arrête le rendu du reste de la page
 
 # ========================
 #   TABS
 # ========================
-# Liste des utilisateurs autorisés à voir le tableau de bord analytique
-ANALYTICS_AUTHORIZED_USERS = ["agdgtrl", "renau"]
-current_user = getpass.getuser().lower()
-
-# Créer les tabs conditionnellement
-if current_user in ANALYTICS_AUTHORIZED_USERS:
+# Seul admin voit tous les onglets
+if current_user == ADMIN_USER:
     tab_csv, tab_ingest, tab_confluence, tab_purge, tab_rag, tab_analytics = st.tabs(
         ["📝 Gestion CSV", "📥 Ingestion documents", "🌐 Confluence", "🗑️ Purge des bases", "❓ Questions RAG", "📊 Tableau de bord"]
     )
 else:
-    tab_csv, tab_ingest, tab_confluence, tab_purge, tab_rag = st.tabs(
-        ["📝 Gestion CSV", "📥 Ingestion documents", "🌐 Confluence", "🗑️ Purge des bases", "❓ Questions RAG"]
+    tab_csv, tab_ingest, tab_rag = st.tabs(
+        ["📝 Gestion CSV", "📥 Ingestion documents", "❓ Questions RAG"]
     )
-    tab_analytics = None  # Pas d'accès au tableau de bord
+    tab_confluence = None
+    tab_purge = None
+    tab_analytics = None
 
 
 # ========================
@@ -1440,9 +1399,12 @@ with tab_ingest:
 
 
 # ========================
-#   TAB CONFLUENCE
+#   TAB CONFLUENCE (admin uniquement)
 # ========================
-with tab_confluence:
+with (tab_confluence if tab_confluence is not None else nullcontext()):
+ if tab_confluence is None:
+    pass  # Tab non visible pour cet utilisateur
+ else:
     st.subheader("🌐 Ingestion depuis Confluence")
 
     if not CONFLUENCE_AVAILABLE:
@@ -1743,9 +1705,12 @@ with tab_confluence:
 
 
 # ========================
-#   TAB PURGE DES BASES
+#   TAB PURGE DES BASES (admin uniquement)
 # ========================
-with tab_purge:
+with (tab_purge if tab_purge is not None else nullcontext()):
+ if tab_purge is None:
+    pass
+ else:
     st.subheader("🗑️ Purge des bases FAISS")
 
     st.warning(
