@@ -103,9 +103,20 @@ def _detect_confluence_type(base_url: str) -> str:
     return "server"
 
 
-def _build_api_url(base_url: str, endpoint: str) -> str:
-    """Construit l'URL de l'API en fonction du type de Confluence."""
+def _build_api_url(base_url: str, endpoint: str, context_path: str = "") -> str:
+    """Construit l'URL de l'API en fonction du type de Confluence.
+
+    Args:
+        base_url: URL de base (ex: https://confluence.company.com)
+        endpoint: Endpoint API (ex: user/current)
+        context_path: Chemin de contexte optionnel (ex: /confluence, /wiki)
+    """
     base_url = base_url.rstrip("/")
+
+    # Si un contexte est spécifié, l'utiliser
+    if context_path:
+        context_path = context_path.strip("/")
+        return f"{base_url}/{context_path}/rest/api/{endpoint}"
 
     conf_type = _detect_confluence_type(base_url)
 
@@ -115,8 +126,13 @@ def _build_api_url(base_url: str, endpoint: str) -> str:
             base_url = f"{base_url}/wiki"
         return f"{base_url}/rest/api/{endpoint}"
     else:
-        # Confluence Server: base_url/rest/api/...
-        return f"{base_url}/rest/api/{endpoint}"
+        # Confluence Server: essayer de détecter le contexte dans l'URL
+        # Patterns courants: /confluence, /wiki, ou directement /rest/api
+        if "/confluence" in base_url.lower() or "/wiki" in base_url.lower():
+            return f"{base_url}/rest/api/{endpoint}"
+        else:
+            # Par défaut, pas de contexte
+            return f"{base_url}/rest/api/{endpoint}"
 
 
 def test_confluence_connection(
@@ -124,6 +140,7 @@ def test_confluence_connection(
     username: str,
     password: str,
     verify_ssl: bool = True,
+    context_path: str = "",
 ) -> Dict[str, Any]:
     """
     Teste la connexion à Confluence.
@@ -133,6 +150,7 @@ def test_confluence_connection(
         username: Nom d'utilisateur
         password: Mot de passe ou token API
         verify_ssl: Si False, désactive la vérification SSL (utile pour certificats auto-signés)
+        context_path: Chemin de contexte pour Confluence Server (ex: /confluence, /wiki)
 
     Returns:
         Dict avec 'success', 'message', et optionnellement 'user_info'
@@ -143,7 +161,7 @@ def test_confluence_connection(
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
     try:
-        api_url = _build_api_url(base_url, "user/current")
+        api_url = _build_api_url(base_url, "user/current", context_path)
         logging.info(f"[confluence] Testing connection to: {api_url}")
         response = requests.get(
             api_url,
@@ -215,9 +233,13 @@ def list_spaces(
     username: str,
     password: str,
     verify_ssl: bool = True,
+    context_path: str = "",
 ) -> List[Dict[str, str]]:
     """
     Liste tous les espaces Confluence accessibles.
+
+    Args:
+        context_path: Chemin de contexte pour Confluence Server (ex: /confluence, /wiki)
 
     Returns:
         Liste de dicts avec 'key', 'name', 'type'
@@ -227,7 +249,7 @@ def list_spaces(
     limit = 50
 
     while True:
-        api_url = _build_api_url(base_url, f"space?start={start}&limit={limit}")
+        api_url = _build_api_url(base_url, f"space?start={start}&limit={limit}", context_path)
         response = requests.get(
             api_url,
             auth=_get_auth(username, password),
@@ -264,9 +286,13 @@ def get_space_pages(
     password: str,
     progress_cb: Optional[ProgressFn] = None,
     verify_ssl: bool = True,
+    context_path: str = "",
 ) -> List[Dict[str, Any]]:
     """
     Récupère toutes les pages d'un espace Confluence.
+
+    Args:
+        context_path: Chemin de contexte pour Confluence Server (ex: /confluence, /wiki)
 
     Returns:
         Liste de dicts avec 'id', 'title', 'url', 'content' (HTML)
@@ -282,7 +308,8 @@ def get_space_pages(
         api_url = _build_api_url(
             base_url,
             f"content?spaceKey={space_key}&type=page&start={start}&limit={limit}"
-            f"&expand=body.storage,version,ancestors"
+            f"&expand=body.storage,version,ancestors",
+            context_path
         )
 
         try:
@@ -353,9 +380,13 @@ def extract_text_from_confluence_space(
     password: str,
     progress_cb: Optional[ProgressFn] = None,
     verify_ssl: bool = True,
+    context_path: str = "",
 ) -> List[Dict[str, Any]]:
     """
     Extrait le texte de toutes les pages d'un espace Confluence.
+
+    Args:
+        context_path: Chemin de contexte pour Confluence Server (ex: /confluence, /wiki)
 
     Returns:
         Liste de dicts avec:
@@ -369,7 +400,7 @@ def extract_text_from_confluence_space(
         progress_cb(0.0, "Connexion à Confluence...")
 
     # Récupérer les pages
-    pages = get_space_pages(base_url, space_key, username, password, progress_cb, verify_ssl=verify_ssl)
+    pages = get_space_pages(base_url, space_key, username, password, progress_cb, verify_ssl=verify_ssl, context_path=context_path)
 
     if not pages:
         logging.warning(f"[confluence] Aucune page trouvée dans l'espace {space_key}")
@@ -411,14 +442,18 @@ def get_space_info(
     username: str,
     password: str,
     verify_ssl: bool = True,
+    context_path: str = "",
 ) -> Optional[Dict[str, Any]]:
     """
     Récupère les informations d'un espace.
 
+    Args:
+        context_path: Chemin de contexte pour Confluence Server (ex: /confluence, /wiki)
+
     Returns:
         Dict avec 'key', 'name', 'description' ou None si non trouvé
     """
-    api_url = _build_api_url(base_url, f"space/{space_key}")
+    api_url = _build_api_url(base_url, f"space/{space_key}", context_path)
 
     try:
         response = requests.get(

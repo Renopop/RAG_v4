@@ -1469,26 +1469,34 @@ with tab_confluence:
         st.markdown("---")
         st.markdown("### 1️⃣ Connexion à Confluence")
 
-        col_url, col_user = st.columns(2)
+        col_url, col_context = st.columns([3, 1])
         with col_url:
             confluence_url = st.text_input(
                 "URL Confluence",
                 placeholder="https://votre-entreprise.atlassian.net",
                 help="URL de base de votre instance Confluence (Cloud ou Server)"
             )
+        with col_context:
+            confluence_context_path = st.text_input(
+                "Chemin contexte",
+                placeholder="/confluence",
+                help="Chemin de contexte pour Confluence Server (ex: /confluence, /wiki). Laisser vide pour Cloud."
+            )
+
+        col_user, col_pwd = st.columns(2)
         with col_user:
             confluence_user = st.text_input(
                 "Nom d'utilisateur / Email",
                 placeholder="votre.email@entreprise.com"
             )
-
-        col_pwd, col_ssl = st.columns([3, 1])
         with col_pwd:
             confluence_password = st.text_input(
                 "Mot de passe / Token API",
                 type="password",
                 help="Pour Confluence Cloud, utilisez un token API (créé depuis les paramètres Atlassian)"
             )
+
+        col_ssl, col_empty = st.columns([1, 3])
         with col_ssl:
             confluence_skip_ssl = st.checkbox(
                 "Ignorer SSL",
@@ -1501,15 +1509,17 @@ with tab_confluence:
             if st.button("🔗 Tester la connexion", disabled=not (confluence_url and confluence_user and confluence_password)):
                 with st.spinner("Test de connexion..."):
                     verify_ssl = not confluence_skip_ssl
-                    result = test_confluence_connection(confluence_url, confluence_user, confluence_password, verify_ssl=verify_ssl)
+                    ctx_path = confluence_context_path.strip() if confluence_context_path else ""
+                    result = test_confluence_connection(confluence_url, confluence_user, confluence_password, verify_ssl=verify_ssl, context_path=ctx_path)
                     if result["success"]:
                         st.session_state.confluence_connected = True
                         st.session_state.confluence_url = confluence_url
                         st.session_state.confluence_user = confluence_user
                         st.session_state.confluence_password = confluence_password
                         st.session_state.confluence_verify_ssl = verify_ssl
+                        st.session_state.confluence_context_path = ctx_path
                         # Charger la liste des espaces
-                        st.session_state.confluence_spaces = list_spaces(confluence_url, confluence_user, confluence_password, verify_ssl=verify_ssl)
+                        st.session_state.confluence_spaces = list_spaces(confluence_url, confluence_user, confluence_password, verify_ssl=verify_ssl, context_path=ctx_path)
                         st.success(result["message"])
                     else:
                         st.session_state.confluence_connected = False
@@ -1556,7 +1566,8 @@ with tab_confluence:
                     confluence_space_key,
                     st.session_state.confluence_user,
                     st.session_state.confluence_password,
-                    verify_ssl=st.session_state.get("confluence_verify_ssl", True)
+                    verify_ssl=st.session_state.get("confluence_verify_ssl", True),
+                    context_path=st.session_state.get("confluence_context_path", "")
                 )
                 if space_info:
                     st.info(f"📁 **{space_info['name']}** - {space_info.get('description', 'Pas de description')[:100]}")
@@ -1625,7 +1636,8 @@ with tab_confluence:
                         st.session_state.confluence_user,
                         st.session_state.confluence_password,
                         progress_cb=lambda p, t: progress(0.1 + p * 0.4, t),
-                        verify_ssl=st.session_state.get("confluence_verify_ssl", True)
+                        verify_ssl=st.session_state.get("confluence_verify_ssl", True),
+                        context_path=st.session_state.get("confluence_context_path", "")
                     )
 
                     if not pages:
