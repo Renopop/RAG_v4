@@ -24,6 +24,7 @@ import streamlit as st
 from models_utils import EMBED_MODEL, LLM_MODEL, make_logger
 from rag_ingestion import ingest_documents, build_faiss_store
 from rag_query import run_rag_query
+from faiss_store import get_cache_manager, LocalCacheManager
 from feedback_store import FeedbackStore, create_feedback, QueryFeedback
 from config_manager import (
     load_config,
@@ -68,9 +69,9 @@ logger = make_logger(debug=False)
 # =====================================================================
 
 @st.cache_resource(ttl=600, show_spinner=False)  # Cache 10 minutes (singleton)
-def get_cached_faiss_store(db_path: str):
+def get_cached_faiss_store(db_path: str, use_local_cache: bool = False):
     """Retourne un store FAISS caché pour éviter les reconstructions."""
-    return build_faiss_store(db_path)
+    return build_faiss_store(db_path, use_local_cache=use_local_cache, lazy_load=True)
 
 
 @st.cache_data(ttl=1800, show_spinner=False)  # Cache 30 minutes
@@ -83,6 +84,7 @@ def cached_rag_query(
     use_feedback_reranking: bool = False,
     use_query_expansion: bool = True,
     use_bge_reranker: bool = True,
+    use_local_cache: bool = False,
 ) -> dict:
     """
     Version cachée de run_rag_query pour éviter les recalculs sur requêtes identiques.
@@ -99,6 +101,7 @@ def cached_rag_query(
         use_feedback_reranking=use_feedback_reranking,
         use_query_expansion=use_query_expansion,
         use_bge_reranker=use_bge_reranker,
+        use_local_cache=use_local_cache,
     )
 
 
@@ -515,6 +518,115 @@ if current_user in allowed_users:
         st.markdown("### 🤖 Modèles utilisés")
         st.caption(f"🔹 Embeddings : **Snowflake** – `{EMBED_MODEL}`")
         st.caption(f"🔹 LLM : **DALLEM** – `{LLM_MODEL}`")
+
+        st.markdown("---")
+
+        # ========================
+        #   SECTION CACHE LOCAL
+        # ========================
+        st.markdown("### 💾 Cache Local")
+        st.caption("Accélérez les requêtes en copiant les bases localement")
+
+        # Initialiser le gestionnaire de cache
+        cache_mgr = get_cache_manager()
+        cache_status = cache_mgr.get_cache_status()
+
+        # Afficher le statut du cache
+        st.caption(f"📂 Cache: `{cache_status['cache_dir']}`")
+        st.caption(f"📊 Taille: {cache_status['total_size_mb']:.1f} MB ({cache_status['collections_count']} collections)")
+
+        # Activer/désactiver le cache
+        if "use_local_cache" not in st.session_state:
+            st.session_state["use_local_cache"] = False
+
+        use_cache = st.checkbox(
+            "🚀 Utiliser le cache local",
+            value=st.session_state.get("use_local_cache", False),
+            help="Active le cache local pour des requêtes plus rapides"
+        )
+        st.session_state["use_local_cache"] = use_cache
+
+        # Sélection de la base et collection pour le cache
+        if bases:
+            cache_base = st.selectbox(
+                "Base à cacher",
+                options=bases,
+                key="cache_base_select"
+            )
+
+            if cache_base:
+                base_path = os.path.join(base_root, cache_base)
+                try:
+                    store = build_faiss_store(base_path)
+                    collections = store.list_collections()
+
+                    if collections:
+                        cache_collection = st.selectbox(
+                            "Collection",
+                            options=collections,
+                            key="cache_collection_select"
+                        )
+
+                        if cache_collection:
+                            collection_path = os.path.join(base_path, cache_collection)
+                            is_cached = cache_mgr.is_cached(collection_path)
+
+                            if is_cached:
+                                is_valid = cache_mgr.is_cache_valid(collection_path)
+                                if is_valid:
+                                    st.success("✅ En cache (à jour)")
+                                else:
+                                    st.warning("⚠️ Cache obsolète")
+
+                            # Bouton pour créer/mettre à jour le cache
+                            col_cache1, col_cache2 = st.columns(2)
+
+                            with col_cache1:
+                                if st.button(
+                                    "📥 Cacher localement",
+                                    type="primary",
+                                    use_container_width=True,
+                                    help="Copie la collection vers le cache local"
+                                ):
+                                    with st.spinner("Copie en cours..."):
+                                        progress_bar = st.progress(0)
+                                        status_text = st.empty()
+
+                                        def update_progress(progress, message):
+                                            progress_bar.progress(int(progress))
+                                            status_text.text(message)
+
+                                        try:
+                                            local_path = cache_mgr.copy_to_cache(
+                                                collection_path,
+                                                progress_callback=update_progress
+                                            )
+                                            st.success(f"✅ Caché dans: {local_path}")
+                                            st.rerun()
+                                        except Exception as e:
+                                            st.error(f"❌ Erreur: {e}")
+
+                            with col_cache2:
+                                if is_cached:
+                                    if st.button(
+                                        "🗑️ Supprimer cache",
+                                        use_container_width=True,
+                                        help="Supprime la copie locale"
+                                    ):
+                                        cache_mgr.invalidate_cache(collection_path)
+                                        st.success("✅ Cache supprimé")
+                                        st.rerun()
+                    else:
+                        st.info("Aucune collection dans cette base")
+                except Exception as e:
+                    st.error(f"Erreur: {e}")
+
+            # Bouton pour vider tout le cache
+            st.markdown("---")
+            if st.button("🧹 Vider tout le cache", help="Supprime toutes les copies locales"):
+                cache_mgr.clear_all_cache()
+                st.success("✅ Cache vidé")
+                st.rerun()
 
 
 # ========================
@@ -1936,6 +2048,7 @@ with tab_rag:
                                 use_feedback_reranking=use_feedback_reranking,
                                 use_query_expansion=True,
                                 use_bge_reranker=True,
+                                use_local_cache=st.session_state.get("use_local_cache", False),
                             )
 
                         # Stocker le résultat dans session_state
@@ -1964,6 +2077,7 @@ with tab_rag:
                                         use_feedback_reranking=use_feedback_reranking,
                                         use_query_expansion=True,
                                         use_bge_reranker=True,
+                                        use_local_cache=st.session_state.get("use_local_cache", False),
                                     )
 
                                 # Stocker le résultat dans session_state
@@ -1989,6 +2103,7 @@ with tab_rag:
                                                 use_feedback_reranking=use_feedback_reranking,
                                                 use_query_expansion=True,
                                                 use_bge_reranker=True,
+                                                use_local_cache=st.session_state.get("use_local_cache", False),
                                             )
                                             all_results.append((coll, res))
                                         except Exception as e:

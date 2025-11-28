@@ -64,14 +64,18 @@ logger = make_logger(debug=False)
 #  FAISS STORE
 # =====================================================================
 
-def build_store(db_path: str) -> FaissStore:
+def build_store(db_path: str, use_local_cache: bool = False) -> FaissStore:
     """
     Construit un store FAISS sur le répertoire db_path.
     Pas de retry nécessaire: FAISS fonctionne sans problème sur réseau!
+
+    Args:
+        db_path: Chemin de la base FAISS
+        use_local_cache: Si True, utilise le cache local pour les lectures
     """
-    logger.info(f"[QUERY] Creating FAISS store at: {db_path}")
-    store = FaissStore(path=db_path)
-    logger.info(f"[QUERY] ✅ FAISS store ready (no network issues!)")
+    logger.info(f"[QUERY] Creating FAISS store at: {db_path} (cache={use_local_cache})")
+    store = FaissStore(path=db_path, use_local_cache=use_local_cache, lazy_load=True)
+    logger.info(f"[QUERY] ✅ FAISS store ready (cache={'enabled' if use_local_cache else 'disabled'})")
     return store
 
 
@@ -93,6 +97,7 @@ def _run_rag_query_single_collection(
     num_query_variations: int = 3,
     use_bge_reranker: bool = True,
     use_context_expansion: bool = True,
+    use_local_cache: bool = False,
 ) -> Dict[str, Any]:
     """
     RAG sur une seule collection.
@@ -104,6 +109,7 @@ def _run_rag_query_single_collection(
     - Si use_query_expansion=True : génère des variations de la question et fusionne les résultats
     - Si use_bge_reranker=True : applique le reranking BGE après la recherche initiale
     - Si use_context_expansion=True : enrichit les chunks avec contexte voisin et références
+    - Si use_local_cache=True : utilise le cache local pour des lectures plus rapides
     """
     _log = log or logger
 
@@ -112,11 +118,11 @@ def _run_rag_query_single_collection(
         raise ValueError("Question vide")
 
     _log.info(
-        f"[RAG] (single) db={db_path} | collection={collection_name} | top_k={top_k}"
+        f"[RAG] (single) db={db_path} | collection={collection_name} | top_k={top_k} | cache={use_local_cache}"
     )
 
-    # 1) FAISS store + collection
-    store = build_store(db_path)
+    # 1) FAISS store + collection (avec cache local si activé)
+    store = build_store(db_path, use_local_cache=use_local_cache)
     collection = store.get_collection(name=collection_name)
 
     # 2) Client embeddings Snowflake
@@ -438,6 +444,7 @@ def run_rag_query(
     num_query_variations: int = 3,
     use_bge_reranker: bool = True,
     use_context_expansion: bool = True,
+    use_local_cache: bool = False,
 ) -> Dict[str, Any]:
     """
     RAG "haut niveau" :
@@ -465,15 +472,18 @@ def run_rag_query(
     - feedback_store : instance de FeedbackStore pour accéder aux feedbacks
     - use_feedback_reranking : activer le re-ranking basé sur les feedbacks
     - feedback_alpha : facteur d'influence (0-1, défaut 0.3)
+
+    Options de performance :
+    - use_local_cache : utilise le cache local pour des lectures plus rapides (défaut: False)
     """
     _log = log or logger
 
     # Cas "ALL" (utilisé par streamlit_RAG quand synthesize_all=True)
     if collection_name == "ALL":
         _log.info(
-            f"[RAG] Mode ALL collections | db={db_path} | synthesize_all={synthesize_all}"
+            f"[RAG] Mode ALL collections | db={db_path} | synthesize_all={synthesize_all} | cache={use_local_cache}"
         )
-        store = build_store(db_path)
+        store = build_store(db_path, use_local_cache=use_local_cache)
         collections = store.list_collections()  # FAISS retourne directement une liste de noms
 
         if not collections:
@@ -514,6 +524,7 @@ def run_rag_query(
                     num_query_variations=num_query_variations,
                     use_bge_reranker=use_bge_reranker,
                     use_context_expansion=use_context_expansion,
+                    use_local_cache=use_local_cache,
                 )
             except Exception as e:
                 _log.error(
@@ -576,4 +587,5 @@ def run_rag_query(
         num_query_variations=num_query_variations,
         use_bge_reranker=use_bge_reranker,
         use_context_expansion=use_context_expansion,
+        use_local_cache=use_local_cache,
     )
