@@ -848,22 +848,6 @@ with tab_ingest:
         st.session_state["bulk_update_all"] = False  # Réinitialiser la sélection globale
         st.rerun()
 
-    # Option EASA sections
-    if "use_easa_sections" not in st.session_state:
-        st.session_state["use_easa_sections"] = False
-
-    use_easa_sections = st.checkbox(
-        "Utiliser les sections EASA (CS / AMC / GM)",
-        value=st.session_state["use_easa_sections"],
-        help=(
-            "Quand activé, le texte est d'abord découpé par sections CS/AMC/GM "
-            "avant le chunking."
-        ),
-    )
-    st.session_state["use_easa_sections"] = use_easa_sections
-
-    st.markdown("---")
-
     # Sélection de CSV depuis CSV_IMPORT_DIR
     st.markdown(f"### 📂 Sélectionner des CSV depuis `{CSV_IMPORT_DIR}`")
 
@@ -942,6 +926,37 @@ with tab_ingest:
     if uploaded_csvs:
         for uploaded in uploaded_csvs:
             csv_files_to_process.append(("uploaded", uploaded.name, uploaded))
+
+    # ========================================================================
+    # OPTION EASA - Auto-activation pour base CERTIFICATION
+    # ========================================================================
+    # Détecter les bases sélectionnées
+    selected_bases = set()
+    for source_type, csv_name, _ in csv_files_to_process:
+        base_name = Path(csv_name).stem.upper()
+        selected_bases.add(base_name)
+
+    # Vérifier si CERTIFICATION est dans les bases sélectionnées
+    has_certification = "CERTIFICATION" in selected_bases
+
+    if has_certification:
+        # Auto-activation pour CERTIFICATION
+        use_easa_sections = True
+        st.info("✈️ **Mode EASA activé automatiquement** pour la base CERTIFICATION (découpage CS/AMC/GM)")
+    else:
+        # Option manuelle pour les autres bases
+        if "use_easa_sections" not in st.session_state:
+            st.session_state["use_easa_sections"] = False
+
+        use_easa_sections = st.checkbox(
+            "✈️ Utiliser les sections EASA (CS / AMC / GM)",
+            value=st.session_state["use_easa_sections"],
+            help=(
+                "Quand activé, le texte est d'abord découpé par sections CS/AMC/GM "
+                "avant le chunking. Activé automatiquement pour la base CERTIFICATION."
+            ),
+        )
+        st.session_state["use_easa_sections"] = use_easa_sections
 
     # Afficher l'état des bases (indicateur de disponibilité pour coordination)
     st.markdown("---")
