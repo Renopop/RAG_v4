@@ -39,11 +39,14 @@ L'application s'ouvre automatiquement dans votre navigateur sur `http://localhos
 
 - 📝 **Gestion CSV** avec interface GUI moderne
 - 📥 **Ingestion documents** (PDF, DOCX, DOC, TXT) avec tracking automatique
+- 🔄 **Mise à jour globale** : bouton pour traiter tous les CSV en une fois
 - 🌐 **Ingestion Confluence** : chargement d'espaces entiers via API
+- ✈️ **Mode EASA automatique** : activé automatiquement pour la base CERTIFICATION
 - 🔒 **Coordination multi-utilisateurs** avec système de verrous
 - 🗑️ **Purge des bases** FAISS
 - ❓ **Questions RAG** avec recherche sémantique et génération de réponses
 - 💾 **Cache local** : copie locale des bases pour performances réseau optimales
+- 📖 **Documentation intégrée** : accès aux guides directement depuis l'interface
 - 📝 **Feedback utilisateur** : évaluation granulaire des réponses et sources
 - 🔄 **Re-ranking intelligent** : amélioration des résultats basée sur les feedbacks
 - 📊 **Tableau de bord analytique** : statistiques et tendances des retours
@@ -485,5 +488,5 @@ Consultez la documentation pour toute question :
 
 ---
 
-**Version:** 1.6
+**Version:** 1.7
 **Dernière mise à jour:** 2025-11-28

@@ -409,14 +409,15 @@ Si `requirements.txt` a changé :
    → Sélectionner base + collection → Taper question
    → Sources cliquables avec bouton "Ouvrir"
 
-NOUVEAUTÉS v1.6 :
+NOUVEAUTÉS v1.7 :
+✅ Bouton "Mise à jour de toutes les bases" (traite tous les CSV)
+✅ Mode EASA automatique pour base CERTIFICATION
+✅ Documentation intégrée accessible depuis la sidebar
 ✅ Cache local automatique (performances réseau optimales)
 ✅ FAISS = compatible réseau Windows
 ✅ Extraction tableaux PDF (pdfplumber)
-✅ Cache Streamlit (requêtes répétées instantanées)
-✅ APIs uniquement (Snowflake, DALLEM, BGE Reranker)
 
-Aide : GUIDE_UTILISATEUR.md
+Aide : GUIDE_UTILISATEUR.md (accessible directement depuis l'interface)
 ```
 
 ---

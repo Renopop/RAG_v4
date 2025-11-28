@@ -1090,5 +1090,5 @@ logging.basicConfig(
 
 **Auteur** : Renaud LOISON
 
-**Version:** 1.6
+**Version:** 1.7
 **Dernière mise à jour:** 2025-11-28

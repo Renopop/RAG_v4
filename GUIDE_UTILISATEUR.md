@@ -619,9 +619,27 @@ Consultez-les en cas d'erreur pour voir ce qui s'est passé.
 
 ---
 
-## 🆕 Nouveautés de cette version (v1.6)
+## 🆕 Nouveautés de cette version (v1.7)
 
-### 💾 Cache local automatique (NOUVEAU)
+### 🔄 Mise à jour globale des bases (NOUVEAU)
+- 🔄 **Bouton "Mise à jour de toutes les bases"** : traite tous les CSV du répertoire en un clic
+- 📊 **Indicateur** : affiche le nombre de CSV disponibles
+- ⚠️ **Avertissement** : prévient que l'opération peut prendre plusieurs minutes
+- ❌ **Annulation** : bouton pour désélectionner tous les fichiers
+
+### ✈️ Mode EASA automatique (NOUVEAU)
+- ✈️ **Activation automatique** : le mode EASA (CS/AMC/GM) s'active automatiquement pour la base CERTIFICATION
+- 📋 **Checkbox masqué** : pas besoin de cocher manuellement pour CERTIFICATION
+- ℹ️ **Message info** : indication claire quand le mode est auto-activé
+- 🔧 **Manuel pour autres bases** : le checkbox reste disponible pour les autres bases
+
+### 📖 Documentation intégrée (NOUVEAU)
+- 📖 **Section Documentation** dans la sidebar
+- 📋 **4 guides accessibles** : README, Guide Utilisateur, Architecture Technique, Installation Réseau
+- 👁️ **Affichage pleine page** : contenu markdown rendu directement dans l'interface
+- 🔙 **Retour facile** : bouton pour revenir à l'application
+
+### 💾 Cache local automatique
 - 📥 **Bouton "Copier local"** : copie la base FAISS en local pour performances optimales
 - 🔄 **Utilisation automatique** : une fois créé, le cache est utilisé sans intervention
 - ✅ **Validation automatique** : le cache est comparé à la base réseau à chaque requête
