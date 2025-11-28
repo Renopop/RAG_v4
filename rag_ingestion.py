@@ -215,7 +215,8 @@ def ingest_documents(
 
     # Utiliser ThreadPoolExecutor pour le traitement parallèle
     # Threads au lieu de processus = meilleure compatibilité Windows + PyMuPDF
-    max_workers = min(multiprocessing.cpu_count(), len(file_paths))
+    # max(1, ...) pour éviter l'erreur si file_paths est vide
+    max_workers = max(1, min(multiprocessing.cpu_count(), len(file_paths)))
 
     # Dictionnaire pour stocker les résultats chargés: path -> {text, language, error}
     loaded_files: Dict[str, Dict[str, Any]] = {}
@@ -422,7 +423,9 @@ def ingest_documents(
     # Traitement PARALLÈLE des fichiers (chunking + augmentation)
     # ------------------------------------------------------------------
     total_loaded = len(loaded_files)
-    chunking_workers = min(multiprocessing.cpu_count(), total_loaded, 8)
+
+    # S'assurer qu'on a au moins 1 worker (évite l'erreur si total_loaded=0)
+    chunking_workers = max(1, min(multiprocessing.cpu_count(), total_loaded, 8))
     _log.info(f"[INGEST] Starting parallel chunking with {chunking_workers} workers for {total_loaded} files")
 
     # Préparer les arguments pour chaque fichier
