@@ -1460,10 +1460,25 @@ with (tab_confluence if tab_confluence is not None else nullcontext()):
                     break
             return base, context_path.rstrip("/")
 
-        confluence_url, confluence_context_path = parse_confluence_url(confluence_url_input)
+        confluence_url, confluence_context_path_auto = parse_confluence_url(confluence_url_input)
 
         if confluence_url_input and confluence_url:
-            st.caption(f"🔗 Base détectée: `{confluence_url}` | Contexte: `{confluence_context_path or '(aucun)'}`")
+            st.caption(f"🔗 Base détectée: `{confluence_url}` | Contexte auto-détecté: `{confluence_context_path_auto or '(aucun)'}`")
+
+        # Option pour forcer le contexte si l'auto-détection échoue
+        col_context, col_context_help = st.columns([2, 2])
+        with col_context:
+            confluence_context_manual = st.text_input(
+                "Chemin de contexte (optionnel)",
+                value="",
+                placeholder="/confluence ou /wiki",
+                help="Si 'API non trouvée', essayez /confluence ou /wiki"
+            )
+        with col_context_help:
+            st.caption("💡 Laissez vide pour utiliser l'auto-détection. Sinon essayez `/confluence` ou `/wiki`")
+
+        # Utiliser le contexte manuel s'il est renseigné, sinon l'auto-détecté
+        confluence_context_path = confluence_context_manual.strip() if confluence_context_manual.strip() else confluence_context_path_auto
 
         col_user, col_pwd = st.columns(2)
         with col_user:
