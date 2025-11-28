@@ -2015,7 +2015,14 @@ with tab_rag:
             if os.path.exists(db_path_debug):
                 subdirs = [d for d in os.listdir(db_path_debug) if os.path.isdir(os.path.join(db_path_debug, d))]
                 if subdirs:
-                    st.warning(f"⚠️ {len(subdirs)} dossier(s) trouvé(s) mais aucune collection valide (manque index.faiss ou metadata.json)")
+                    # Montrer le contenu du premier dossier pour debug
+                    first_subdir = subdirs[0]
+                    first_path = os.path.join(db_path_debug, first_subdir)
+                    files_in_first = os.listdir(first_path) if os.path.exists(first_path) else []
+                    with st.expander(f"⚠️ {len(subdirs)} dossier(s) trouvé(s) mais aucune collection valide", expanded=True):
+                        st.write(f"**Dossiers:** {', '.join(subdirs[:5])}{'...' if len(subdirs) > 5 else ''}")
+                        st.write(f"**Fichiers dans '{first_subdir}':** {', '.join(files_in_first[:10]) if files_in_first else '(vide)'}")
+                        st.caption("Une collection valide doit contenir `index.faiss` ou `metadata.json`")
                 else:
                     st.info(f"ℹ️ La base '{base_for_query}' est vide (aucun sous-dossier)")
             else:
