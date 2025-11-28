@@ -653,6 +653,7 @@ Consultez-les en cas d'erreur pour voir ce qui s'est passé.
 - ✅ **Validation automatique** : le cache est comparé à la base réseau à chaque requête
 - ⚠️ **Avertissement si obsolète** : bannière orange si la base réseau a changé
 - 🌐 **Fallback réseau** : si le cache est obsolète, les requêtes passent par le réseau
+- ⏱️ **Durées de cache** : listes (5 min), stores FAISS (10 min), requêtes RAG (30 min)
 
 ### 📊 Extraction de tableaux PDF
 - 📋 **pdfplumber** : détection automatique des tableaux dans les PDF
@@ -691,6 +692,7 @@ Consultez-les en cas d'erreur pour voir ce qui s'est passé.
 
 ### 🌐 Ingestion Confluence (NOUVEAU)
 - 🔗 **Connexion API** : Support Cloud (atlassian.net) et Server
+- 🔍 **Auto-détection URL** : collez n'importe quelle URL Confluence, le contexte est détecté automatiquement
 - 📁 **Espaces entiers** : ingestion de toutes les pages d'un espace
 - 🔄 **Conversion HTML→texte** : tableaux, listes, headers préservés
 - ⏰ **Automatisation** : idéal pour synchronisation hebdomadaire
@@ -708,6 +710,7 @@ Consultez-les en cas d'erreur pour voir ce qui s'est passé.
 - 💾 **Auto-save** : sauvegarde après chaque ajout
 
 ### Corrections critiques
+- 🐛 Fix erreur `max_workers must be greater than 0` (listes vides)
 - 🐛 Fix erreur pdfminer StringIO (encode)
 - 🐛 Fix erreur token limit Snowflake (8192 max)
 - 🐛 Fix validation longueurs dans FAISS
