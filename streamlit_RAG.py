@@ -382,6 +382,18 @@ st.set_page_config(
 )
 
 # ========================
+#   ACTUALISATION DU CACHE AU CHARGEMENT
+# ========================
+# Vider le cache des collections au premier chargement de la session
+# pour garantir des données fraîches depuis le réseau
+if "cache_cleared_on_load" not in st.session_state:
+    st.session_state["cache_cleared_on_load"] = True
+    # Vider les caches des fonctions de listing
+    list_collections_for_base.clear()
+    get_collection_doc_counts.clear()
+    get_cached_faiss_store.clear()
+
+# ========================
 #   VÉRIFICATION DE LA CONFIGURATION
 # ========================
 # Si les répertoires ne sont pas accessibles, afficher la page de configuration
