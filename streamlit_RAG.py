@@ -388,10 +388,9 @@ st.set_page_config(
 # pour garantir des données fraîches depuis le réseau
 if "cache_cleared_on_load" not in st.session_state:
     st.session_state["cache_cleared_on_load"] = True
-    # Vider les caches des fonctions de listing
+    # Vider les caches des listes uniquement (PAS les stores FAISS)
     list_collections_for_base.clear()
     get_collection_doc_counts.clear()
-    get_cached_faiss_store.clear()
 
 # ========================
 #   VÉRIFICATION DE LA CONFIGURATION
@@ -1998,10 +1997,9 @@ with tab_rag:
     with sel_col3:
         st.markdown("&nbsp;")  # Espacement pour aligner
         if st.button("🔄 Actualiser", use_container_width=True, help="Actualiser la liste des collections depuis le réseau"):
-            # Vider les caches pour forcer le rechargement
+            # Vider uniquement les caches des listes (PAS les stores FAISS)
             list_collections_for_base.clear()
             get_collection_doc_counts.clear()
-            get_cached_faiss_store.clear()
             st.rerun()
 
     # ========================
