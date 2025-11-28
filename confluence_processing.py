@@ -438,13 +438,14 @@ def extract_text_from_confluence_space(
 
 def group_pages_by_section(pages: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
     """
-    Groupe les pages par leur page parente (dernier ancêtre).
+    Groupe les pages par leur page parente de niveau 2.
+    Ignore les pages de niveau 1 et 2, ne garde que niveau 3+.
 
     Args:
-        pages: Liste de pages avec le champ 'path' (format: "Parent > Sous-parent > Page")
+        pages: Liste de pages avec le champ 'path' (format: "Racine > Section > Page")
 
     Returns:
-        Dict avec clé = nom du parent direct, valeur = liste de pages enfants
+        Dict avec clé = nom de la section (niveau 2), valeur = liste de sous-pages
     """
     sections = {}
 
@@ -452,17 +453,17 @@ def group_pages_by_section(pages: List[Dict[str, Any]]) -> Dict[str, List[Dict[s
         path = page.get("path", "")
         parts = [p.strip() for p in path.split(">") if p.strip()]
 
-        # Utiliser le parent direct (avant-dernier élément) ou la page elle-même si pas de parent
-        if len(parts) >= 2:
-            # Avant-dernier = parent direct de la page
-            parent_section = parts[-2]
-        else:
-            # Pas de parent, utiliser le titre de la page
-            parent_section = page.get("title", "Sans titre")
+        # Ne garder que les pages de niveau 3+ (au moins 3 éléments dans le chemin)
+        # parts[0] = racine (ignoré)
+        # parts[1] = section/collection (nom du groupe)
+        # parts[2+] = sous-pages (contenu)
+        if len(parts) >= 3:
+            # Utiliser le niveau 2 (index 1) comme nom de section
+            section_name = parts[1]
 
-        if parent_section not in sections:
-            sections[parent_section] = []
-        sections[parent_section].append(page)
+            if section_name not in sections:
+                sections[section_name] = []
+            sections[section_name].append(page)
 
     # Trier les sections par nom
     return dict(sorted(sections.items()))
