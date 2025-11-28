@@ -57,6 +57,7 @@ try:
         list_spaces,
         get_space_info,
         extract_text_from_confluence_space,
+        group_pages_by_section,
     )
     CONFLUENCE_AVAILABLE = True
 except ImportError:
@@ -1555,154 +1556,272 @@ with (tab_confluence if tab_confluence is not None else nullcontext()):
                     st.warning(f"⚠️ Espace '{confluence_space_key}' non trouvé ou inaccessible")
 
             st.markdown("---")
-            st.markdown("### 3️⃣ Configuration de l'ingestion")
+            st.markdown("### 3️⃣ Scanner l'espace")
 
-            # Base FAISS dédiée pour Confluence (créée automatiquement si nécessaire)
-            CONFLUENCE_BASE_NAME = "CONFLUENCE"
-            confluence_base_path = os.path.join(base_root, CONFLUENCE_BASE_NAME)
+            # Initialiser session_state pour le scan
+            if "confluence_scanned_pages" not in st.session_state:
+                st.session_state.confluence_scanned_pages = None
+            if "confluence_sections" not in st.session_state:
+                st.session_state.confluence_sections = {}
+            if "confluence_selected_sections" not in st.session_state:
+                st.session_state.confluence_selected_sections = {}
 
-            # Créer la base CONFLUENCE si elle n'existe pas
-            if not os.path.exists(confluence_base_path):
-                os.makedirs(confluence_base_path, exist_ok=True)
-                st.info(f"📁 Base FAISS '{CONFLUENCE_BASE_NAME}' créée automatiquement")
-
-            confluence_target_base = CONFLUENCE_BASE_NAME
-
-            st.info(f"📦 **Base FAISS dédiée** : `{CONFLUENCE_BASE_NAME}`")
-
-            confluence_collection = st.text_input(
-                "Nom de la collection",
-                value=confluence_space_key.lower() if confluence_space_key else "",
-                help="Nom de la collection (par défaut: clé de l'espace en minuscule)"
-            )
-
-            # Options d'ingestion
-            confluence_rebuild = st.checkbox(
-                "🔄 Reconstruire la collection (supprimer l'existant)",
-                value=True,
-                help="Recommandé pour une mise à jour hebdomadaire complète"
-            )
-
-            st.markdown("---")
-            st.markdown("### 4️⃣ Lancer l'ingestion")
-
-            can_ingest = (
-                confluence_space_key
-                and confluence_collection
-            )
-
-            if st.button("🚀 Ingérer l'espace Confluence", disabled=not can_ingest, type="primary"):
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-                log_container = st.empty()
-                logs = []
-
-                def log(msg):
-                    logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
-                    log_container.code("\n".join(logs[-20:]), language="")
-
-                def progress(value, text):
-                    progress_bar.progress(value)
-                    status_text.text(text)
-
-                try:
-                    # Étape 1: Extraction depuis Confluence
-                    log(f"Extraction de l'espace {confluence_space_key}...")
-                    progress(0.1, "Extraction des pages Confluence...")
-
-                    pages = extract_text_from_confluence_space(
-                        st.session_state.confluence_url,
-                        confluence_space_key,
-                        st.session_state.confluence_user,
-                        st.session_state.confluence_password,
-                        progress_cb=lambda p, t: progress(0.1 + p * 0.4, t),
-                        verify_ssl=st.session_state.get("confluence_verify_ssl", True),
-                        context_path=st.session_state.get("confluence_context_path", "")
-                    )
-
-                    if not pages:
-                        st.error("❌ Aucune page extraite depuis Confluence")
-                    else:
-                        log(f"✅ {len(pages)} pages extraites")
-
-                        # Étape 2: Créer des fichiers temporaires pour l'ingestion
-                        progress(0.5, "Préparation des fichiers pour ingestion...")
-                        temp_dir = tempfile.mkdtemp(prefix="confluence_")
-                        file_paths = []
-                        logical_paths = {}
-
-                        for page in pages:
-                            if not page.get("text", "").strip():
-                                continue
-
-                            # Créer un fichier .txt temporaire pour chaque page
-                            safe_title = "".join(c if c.isalnum() or c in " -_" else "_" for c in page["title"])[:50]
-                            temp_file = os.path.join(temp_dir, f"{page['id']}_{safe_title}.txt")
-
-                            with open(temp_file, "w", encoding="utf-8") as f:
-                                f.write(page["text"])
-
-                            file_paths.append(temp_file)
-                            # Chemin logique = URL de la page Confluence
-                            logical_paths[temp_file] = page.get("url", page["path"])
-
-                        log(f"📄 {len(file_paths)} fichiers préparés")
-
-                        # Étape 3: Ingestion dans FAISS
-                        progress(0.6, "Ingestion dans FAISS...")
-                        db_path = os.path.join(base_root, confluence_target_base)
-
-                        report = ingest_documents(
-                            file_paths=file_paths,
-                            db_path=db_path,
-                            collection_name=confluence_collection,
-                            chunk_size=1000,
-                            use_easa_sections=False,  # Pas de sections EASA pour Confluence
-                            rebuild=confluence_rebuild,
-                            log=logger,
-                            logical_paths=logical_paths,
-                            progress_callback=lambda p, t: progress(0.6 + p * 0.35, t),
+            col_scan, col_scan_status = st.columns([1, 3])
+            with col_scan:
+                if st.button("🔍 Scanner l'espace", disabled=not confluence_space_key):
+                    with st.spinner("Scan en cours..."):
+                        pages = extract_text_from_confluence_space(
+                            st.session_state.confluence_url,
+                            confluence_space_key,
+                            st.session_state.confluence_user,
+                            st.session_state.confluence_password,
+                            verify_ssl=st.session_state.get("confluence_verify_ssl", True),
+                            context_path=st.session_state.get("confluence_context_path", "")
                         )
+                        if pages:
+                            st.session_state.confluence_scanned_pages = pages
+                            st.session_state.confluence_sections = group_pages_by_section(pages)
+                            # Initialiser toutes les sections comme sélectionnées
+                            st.session_state.confluence_selected_sections = {
+                                section: True for section in st.session_state.confluence_sections.keys()
+                            }
+                            st.success(f"✅ {len(pages)} pages trouvées dans {len(st.session_state.confluence_sections)} sections")
+                        else:
+                            st.error("Aucune page trouvée")
+                            st.session_state.confluence_scanned_pages = None
 
-                        log(f"✅ Ingestion terminée: {report.get('total_chunks', 0)} chunks créés")
+            # Afficher les résultats du scan
+            if st.session_state.confluence_scanned_pages and st.session_state.confluence_sections:
+                st.markdown("---")
+                st.markdown("### 4️⃣ Sélection des sections")
 
-                        # Nettoyage
-                        shutil.rmtree(temp_dir, ignore_errors=True)
+                st.markdown(f"**{len(st.session_state.confluence_scanned_pages)} pages** réparties en **{len(st.session_state.confluence_sections)} sections**")
 
-                        progress(1.0, "Terminé!")
+                # Boutons tout sélectionner / tout désélectionner
+                col_all, col_none, col_spacer = st.columns([1, 1, 4])
+                with col_all:
+                    if st.button("✅ Tout sélectionner"):
+                        for section in st.session_state.confluence_sections.keys():
+                            st.session_state.confluence_selected_sections[section] = True
+                        st.rerun()
+                with col_none:
+                    if st.button("❌ Tout désélectionner"):
+                        for section in st.session_state.confluence_sections.keys():
+                            st.session_state.confluence_selected_sections[section] = False
+                        st.rerun()
+
+                # Afficher les sections avec leurs pages
+                for section_name, section_pages in st.session_state.confluence_sections.items():
+                    # Checkbox pour la section
+                    section_selected = st.checkbox(
+                        f"📁 **{section_name}** ({len(section_pages)} pages)",
+                        value=st.session_state.confluence_selected_sections.get(section_name, True),
+                        key=f"section_{section_name}"
+                    )
+                    st.session_state.confluence_selected_sections[section_name] = section_selected
+
+                    # Afficher les pages de la section dans un expander
+                    with st.expander(f"Voir les {len(section_pages)} pages de '{section_name}'", expanded=False):
+                        for page in section_pages:
+                            page_url = page.get("url", "")
+                            page_title = page.get("title", "Sans titre")
+                            text_preview = page.get("text", "")[:200].replace("\n", " ")
+                            if page_url:
+                                st.markdown(f"- [{page_title}]({page_url})")
+                            else:
+                                st.markdown(f"- {page_title}")
+                            if text_preview:
+                                st.caption(f"  {text_preview}...")
+
+                # Compter les pages sélectionnées
+                selected_pages_count = sum(
+                    len(pages) for section, pages in st.session_state.confluence_sections.items()
+                    if st.session_state.confluence_selected_sections.get(section, False)
+                )
+                selected_sections_count = sum(1 for v in st.session_state.confluence_selected_sections.values() if v)
+
+                st.info(f"📊 **{selected_sections_count} sections** et **{selected_pages_count} pages** sélectionnées")
+
+                st.markdown("---")
+                st.markdown("### 5️⃣ Configuration de l'ingestion")
+
+                # Base FAISS dédiée pour Confluence
+                CONFLUENCE_BASE_NAME = "CONFLUENCE"
+                confluence_base_path = os.path.join(base_root, CONFLUENCE_BASE_NAME)
+                if not os.path.exists(confluence_base_path):
+                    os.makedirs(confluence_base_path, exist_ok=True)
+
+                st.info(f"📦 **Base FAISS dédiée** : `{CONFLUENCE_BASE_NAME}`")
+
+                # Mode de collection
+                collection_mode = st.radio(
+                    "Mode de création des collections",
+                    ["Une collection par section", "Une seule collection pour tout"],
+                    help="Par section: chaque section devient une collection séparée. Unique: tout dans une seule collection."
+                )
+
+                if collection_mode == "Une seule collection pour tout":
+                    confluence_collection = st.text_input(
+                        "Nom de la collection unique",
+                        value=confluence_space_key.lower() if confluence_space_key else "",
+                        help="Toutes les pages iront dans cette collection"
+                    )
+                else:
+                    st.caption("Les collections seront nommées d'après les sections (nettoyées en minuscules)")
+                    # Prévisualisation des noms de collections
+                    preview_names = []
+                    for section in st.session_state.confluence_sections.keys():
+                        if st.session_state.confluence_selected_sections.get(section, False):
+                            safe_name = "".join(c if c.isalnum() or c in " -_" else "_" for c in section).lower().strip()[:50]
+                            preview_names.append(safe_name)
+                    if preview_names:
+                        st.caption(f"Collections qui seront créées: `{'`, `'.join(preview_names[:5])}`{'...' if len(preview_names) > 5 else ''}")
+
+                # Option de reconstruction
+                confluence_rebuild = st.checkbox(
+                    "🔄 Reconstruire les collections (supprimer l'existant)",
+                    value=True,
+                    help="Recommandé pour une mise à jour complète"
+                )
+
+                st.markdown("---")
+                st.markdown("### 6️⃣ Lancer l'ingestion")
+
+                can_ingest = selected_pages_count > 0 and (
+                    collection_mode == "Une collection par section" or confluence_collection
+                )
+
+                if st.button("🚀 Ingérer les sections sélectionnées", disabled=not can_ingest, type="primary"):
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+                    log_container = st.empty()
+                    logs = []
+
+                    def log(msg):
+                        logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
+                        log_container.code("\n".join(logs[-20:]), language="")
+
+                    def update_progress(value, text):
+                        progress_bar.progress(min(value, 1.0))
+                        status_text.text(text)
+
+                    try:
+                        db_path = os.path.join(base_root, CONFLUENCE_BASE_NAME)
+                        total_chunks = 0
+                        total_pages = 0
+
+                        # Collecter les sections sélectionnées
+                        selected_sections = [
+                            (section, pages) for section, pages in st.session_state.confluence_sections.items()
+                            if st.session_state.confluence_selected_sections.get(section, False)
+                        ]
+
+                        if collection_mode == "Une collection par section":
+                            # Ingestion section par section
+                            for idx, (section_name, section_pages) in enumerate(selected_sections):
+                                section_progress_base = idx / len(selected_sections)
+                                section_progress_step = 1 / len(selected_sections)
+
+                                # Nom de collection sécurisé
+                                safe_collection = "".join(c if c.isalnum() or c in " -_" else "_" for c in section_name).lower().strip()[:50]
+                                log(f"📁 Section '{section_name}' -> collection '{safe_collection}'")
+                                update_progress(section_progress_base, f"Ingestion de '{section_name}'...")
+
+                                # Créer fichiers temporaires
+                                temp_dir = tempfile.mkdtemp(prefix="confluence_")
+                                file_paths = []
+                                logical_paths = {}
+
+                                for page in section_pages:
+                                    if not page.get("text", "").strip():
+                                        continue
+                                    safe_title = "".join(c if c.isalnum() or c in " -_" else "_" for c in page["title"])[:50]
+                                    temp_file = os.path.join(temp_dir, f"{page['id']}_{safe_title}.txt")
+                                    with open(temp_file, "w", encoding="utf-8") as f:
+                                        f.write(page["text"])
+                                    file_paths.append(temp_file)
+                                    logical_paths[temp_file] = page.get("url", page["path"])
+
+                                if file_paths:
+                                    report = ingest_documents(
+                                        file_paths=file_paths,
+                                        db_path=db_path,
+                                        collection_name=safe_collection,
+                                        chunk_size=1000,
+                                        use_easa_sections=False,
+                                        rebuild=confluence_rebuild,
+                                        log=logger,
+                                        logical_paths=logical_paths,
+                                        progress_callback=lambda p, t: update_progress(
+                                            section_progress_base + p * section_progress_step * 0.9, t
+                                        ),
+                                    )
+                                    total_chunks += report.get("total_chunks", 0)
+                                    total_pages += len(file_paths)
+                                    log(f"  ✅ {report.get('total_chunks', 0)} chunks créés")
+
+                                shutil.rmtree(temp_dir, ignore_errors=True)
+
+                        else:
+                            # Ingestion dans une seule collection
+                            log(f"📁 Collection unique: '{confluence_collection}'")
+                            temp_dir = tempfile.mkdtemp(prefix="confluence_")
+                            file_paths = []
+                            logical_paths = {}
+
+                            for section_name, section_pages in selected_sections:
+                                for page in section_pages:
+                                    if not page.get("text", "").strip():
+                                        continue
+                                    safe_title = "".join(c if c.isalnum() or c in " -_" else "_" for c in page["title"])[:50]
+                                    temp_file = os.path.join(temp_dir, f"{page['id']}_{safe_title}.txt")
+                                    with open(temp_file, "w", encoding="utf-8") as f:
+                                        f.write(page["text"])
+                                    file_paths.append(temp_file)
+                                    logical_paths[temp_file] = page.get("url", page["path"])
+
+                            log(f"📄 {len(file_paths)} fichiers préparés")
+                            update_progress(0.3, "Ingestion dans FAISS...")
+
+                            if file_paths:
+                                report = ingest_documents(
+                                    file_paths=file_paths,
+                                    db_path=db_path,
+                                    collection_name=confluence_collection,
+                                    chunk_size=1000,
+                                    use_easa_sections=False,
+                                    rebuild=confluence_rebuild,
+                                    log=logger,
+                                    logical_paths=logical_paths,
+                                    progress_callback=lambda p, t: update_progress(0.3 + p * 0.65, t),
+                                )
+                                total_chunks = report.get("total_chunks", 0)
+                                total_pages = len(file_paths)
+
+                            shutil.rmtree(temp_dir, ignore_errors=True)
+
+                        update_progress(1.0, "Terminé!")
+                        log(f"✅ Ingestion terminée: {total_chunks} chunks créés")
+
+                        collections_created = len(selected_sections) if collection_mode == "Une collection par section" else 1
                         st.success(
                             f"✅ **Ingestion réussie !**\n\n"
-                            f"- Pages traitées: {len(pages)}\n"
-                            f"- Chunks créés: {report.get('total_chunks', 0)}\n"
-                            f"- Base: {confluence_target_base}\n"
-                            f"- Collection: {confluence_collection}"
+                            f"- Sections traitées: {len(selected_sections)}\n"
+                            f"- Pages traitées: {total_pages}\n"
+                            f"- Chunks créés: {total_chunks}\n"
+                            f"- Collections créées: {collections_created}\n"
+                            f"- Base: {CONFLUENCE_BASE_NAME}"
                         )
 
-                except Exception as e:
-                    st.error(f"❌ Erreur lors de l'ingestion: {str(e)}")
-                    log(f"ERREUR: {str(e)}")
-                    import traceback
-                    log(traceback.format_exc())
+                        # Réinitialiser le scan
+                        st.session_state.confluence_scanned_pages = None
+                        st.session_state.confluence_sections = {}
 
-            # Note sur l'automatisation hebdomadaire
-            st.markdown("---")
-            st.markdown("""
-            ### 💡 Automatisation hebdomadaire
-
-            Pour une synchronisation automatique hebdomadaire, vous pouvez :
-            1. Créer un script Python utilisant ce module
-            2. Le planifier avec le **Planificateur de tâches Windows** ou **cron** (Linux)
-
-            Exemple de script :
-            ```python
-            from confluence_processing import extract_text_from_confluence_space
-            from rag_ingestion import ingest_documents
-
-            # Extraction et ingestion
-            pages = extract_text_from_confluence_space(URL, SPACE, USER, PASSWORD)
-            # ... (voir le code source pour les détails)
-            ```
-            """)
+                    except Exception as e:
+                        st.error(f"❌ Erreur lors de l'ingestion: {str(e)}")
+                        log(f"ERREUR: {str(e)}")
+                        import traceback
+                        log(traceback.format_exc())
 
 
 # ========================

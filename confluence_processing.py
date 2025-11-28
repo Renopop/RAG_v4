@@ -436,6 +436,32 @@ def extract_text_from_confluence_space(
     return results
 
 
+def group_pages_by_section(pages: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Groupe les pages par leur section racine (premier ancêtre).
+
+    Args:
+        pages: Liste de pages avec le champ 'path' (format: "Section > Sous-section > Page")
+
+    Returns:
+        Dict avec clé = nom de section, valeur = liste de pages
+    """
+    sections = {}
+
+    for page in pages:
+        path = page.get("path", page.get("title", "Sans titre"))
+        # Extraire la section racine (premier élément du chemin)
+        parts = [p.strip() for p in path.split(">")]
+        root_section = parts[0] if parts else "Racine"
+
+        if root_section not in sections:
+            sections[root_section] = []
+        sections[root_section].append(page)
+
+    # Trier les sections par nom
+    return dict(sorted(sections.items()))
+
+
 def get_space_info(
     base_url: str,
     space_key: str,
