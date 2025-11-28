@@ -144,6 +144,7 @@ def test_confluence_connection(
 
     try:
         api_url = _build_api_url(base_url, "user/current")
+        logging.info(f"[confluence] Testing connection to: {api_url}")
         response = requests.get(
             api_url,
             auth=_get_auth(username, password),
@@ -151,8 +152,26 @@ def test_confluence_connection(
             verify=verify_ssl,
         )
 
+        logging.info(f"[confluence] Response status: {response.status_code}")
+        logging.info(f"[confluence] Response content-type: {response.headers.get('content-type', 'unknown')}")
+
         if response.status_code == 200:
-            user_info = response.json()
+            # Vérifier que c'est bien du JSON
+            content_type = response.headers.get('content-type', '')
+            if 'application/json' not in content_type:
+                return {
+                    "success": False,
+                    "message": f"Réponse non-JSON reçue (content-type: {content_type}). Le serveur renvoie probablement une page HTML. Vérifiez l'URL.",
+                }
+            try:
+                user_info = response.json()
+            except Exception as json_err:
+                # Afficher un extrait de la réponse pour debug
+                preview = response.text[:500] if response.text else "(vide)"
+                return {
+                    "success": False,
+                    "message": f"Erreur JSON: {json_err}. Réponse reçue: {preview}",
+                }
             return {
                 "success": True,
                 "message": f"Connecté en tant que: {user_info.get('displayName', username)}",
