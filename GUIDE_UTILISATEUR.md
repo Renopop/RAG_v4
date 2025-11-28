@@ -16,7 +16,9 @@ L'application s'ouvre automatiquement dans votre navigateur sur `http://localhos
 
 ---
 
-## 📋 Les 6 onglets de l'application
+## 📋 Les onglets de l'application
+
+> **Note** : Certains onglets (🌐 Confluence, 🗑️ Purge, 📊 Tableau de bord) et la sidebar Configuration sont réservés à l'administrateur (agdgtrl).
 
 ### 📝 **Onglet 1 : Gestion CSV**
 
@@ -156,7 +158,7 @@ Indexez vos documents dans FAISS pour pouvoir les interroger.
 |--------|-----------------|----------|-----------------|
 | **PDF** | pdfplumber | pdfminer.six → PyMuPDF | **Tableaux**, pièces jointes, nettoyage Unicode |
 | **DOCX** | python-docx | - | Tables, sections, paragraphes |
-| **DOC** | pywin32 (Word) | - | ✅ Conversion automatique via Microsoft Word (Windows) |
+| **DOC** | pywin32 (Word) | - | ✅ Conversion auto, accepte révisions, supprime commentaires |
 | **XML** | ElementTree | - | Patterns EASA (CS, AMC, GM) |
 | **TXT/MD** | Lecture native | - | Détection encodage auto |
 | **CSV** | Lecture native | - | Extraction texte brut |
@@ -226,7 +228,7 @@ Chaque chunk est enrichi automatiquement :
 
 ---
 
-### 🌐 **Onglet 3 : Confluence**
+### 🌐 **Onglet 3 : Confluence** *(admin uniquement)*
 
 Ingérez le contenu d'un espace Confluence entier directement dans le RAG.
 
@@ -278,7 +280,7 @@ Pour une synchronisation automatique :
 
 ---
 
-### 🗑️ **Onglet 4 : Purge des bases**
+### 🗑️ **Onglet 4 : Purge des bases** *(admin uniquement)*
 
 Supprimez tout le contenu d'une base (les collections sont vidées mais pas supprimées).
 
@@ -409,7 +411,7 @@ Un champ texte s'affiche pour décrire la **réponse que vous attendiez**. Cette
 
 Si vous travaillez sur un réseau lent, le système propose un **cache local** pour accélérer les requêtes.
 
-**Dans la barre latérale (sidebar)** :
+**Dans l'onglet Questions RAG** (section "Options de cache local") :
 
 1. **Section "💾 Cache local"** : affiche l'état du cache pour chaque collection
 2. **Bouton "📥 Copier local"** : copie la collection sélectionnée en local
@@ -437,7 +439,7 @@ Si la base réseau a été modifiée (nouvelle ingestion), une bannière orange 
 
 ---
 
-### 📊 **Onglet 6 : Tableau de bord analytique**
+### 📊 **Onglet 6 : Tableau de bord analytique** *(admin uniquement)*
 
 Visualisez les statistiques et tendances des retours utilisateurs.
 
@@ -619,9 +621,15 @@ Consultez-les en cas d'erreur pour voir ce qui s'est passé.
 
 ---
 
-## 🆕 Nouveautés de cette version (v1.7)
+## 🆕 Nouveautés de cette version (v1.8)
 
-### 🔄 Mise à jour globale des bases (NOUVEAU)
+### 👥 Gestion des accès (NOUVEAU)
+- 🔒 **Onglets restreints** : Confluence, Purge, Tableau de bord visibles uniquement pour admin
+- 🔒 **Mise à jour groupée** : bouton "Mise à jour de toutes les bases" réservé à l'admin
+- ⚙️ **Configuration** : sidebar Configuration visible uniquement pour admin
+- 📖 **Documentation** : accessible à tous sous le titre principal
+
+### 🔄 Mise à jour globale des bases *(admin uniquement)*
 - 🔄 **Bouton "Mise à jour de toutes les bases"** : traite tous les CSV du répertoire en un clic
 - 📊 **Indicateur** : affiche le nombre de CSV disponibles
 - ⚠️ **Avertissement** : prévient que l'opération peut prendre plusieurs minutes
@@ -633,11 +641,11 @@ Consultez-les en cas d'erreur pour voir ce qui s'est passé.
 - ℹ️ **Message info** : indication claire quand le mode est auto-activé
 - 🔧 **Manuel pour autres bases** : le checkbox reste disponible pour les autres bases
 
-### 📖 Documentation intégrée (NOUVEAU)
-- 📖 **Section Documentation** dans la sidebar
+### 📖 Documentation intégrée
+- 📖 **Section Documentation** sous le titre principal (accessible à tous)
 - 📋 **4 guides accessibles** : README, Guide Utilisateur, Architecture Technique, Installation Réseau
-- 👁️ **Affichage pleine page** : contenu markdown rendu directement dans l'interface
-- 🔙 **Retour facile** : bouton pour revenir à l'application
+- 👁️ **Affichage en expander** : contenu markdown dépliant directement dans l'interface
+- ❓ **Aide rapide** : bouton d'aide avec description des onglets
 
 ### 💾 Cache local automatique
 - 📥 **Bouton "Copier local"** : copie la base FAISS en local pour performances optimales
@@ -672,8 +680,14 @@ Consultez-les en cas d'erreur pour voir ce qui s'est passé.
 ### 📄 Parsing Multi-Format
 - **PDF** : pdfplumber (tableaux) + pdfminer.six + PyMuPDF + pièces jointes
 - **DOCX** : python-docx avec tables, sections, paragraphes
-- **DOC** : ✅ Conversion automatique via Microsoft Word (Windows)
+- **DOC** : ✅ Conversion auto via Word (accepte révisions, supprime commentaires)
 - **XML** : Parser EASA configurable (CS, AMC, GM, CS-E, CS-APU)
+
+### 📝 Conversion DOC améliorée (NOUVEAU)
+- ✅ **Révisions acceptées** : le suivi des modifications est automatiquement accepté
+- ❌ **Commentaires supprimés** : les commentaires ne sont pas inclus dans l'extraction
+- 🔒 **Original préservé** : le fichier .doc source n'est jamais modifié
+- 🗑️ **Nettoyage automatique** : le fichier .docx temporaire est supprimé après ingestion
 
 ### 🌐 Ingestion Confluence (NOUVEAU)
 - 🔗 **Connexion API** : Support Cloud (atlassian.net) et Server

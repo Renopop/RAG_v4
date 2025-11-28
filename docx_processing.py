@@ -15,6 +15,11 @@ def convert_doc_to_docx(doc_path: str) -> str:
     - Windows avec Microsoft Word installé
     - pywin32 (pip install pywin32)
 
+    Traitement automatique:
+    - Accepte toutes les révisions (suivi des modifications)
+    - Supprime tous les commentaires
+    - Stocke le .docx dans un dossier temporaire (l'original n'est pas modifié)
+
     Retourne le chemin vers le fichier .docx créé (dans un dossier temporaire).
     Le fichier temporaire doit être supprimé par l'appelant après usage.
     """
@@ -52,15 +57,29 @@ def convert_doc_to_docx(doc_path: str) -> str:
         # Chemin absolu requis par Word
         abs_doc_path = os.path.abspath(doc_path)
 
-        # Ouvrir le document
-        doc = word.Documents.Open(abs_doc_path)
+        # Ouvrir le document en lecture seule pour ne pas modifier l'original
+        # ReadOnly=True empêche la modification du fichier source
+        doc = word.Documents.Open(abs_doc_path, ReadOnly=True)
 
-        # Chemin de sortie
+        # Accepter toutes les révisions (suivi des modifications)
+        if doc.Revisions.Count > 0:
+            logging.info(f"[docx_processing] Acceptation de {doc.Revisions.Count} révision(s)")
+            doc.AcceptAllRevisions()
+
+        # Supprimer tous les commentaires
+        if doc.Comments.Count > 0:
+            logging.info(f"[docx_processing] Suppression de {doc.Comments.Count} commentaire(s)")
+            # Supprimer du dernier au premier pour éviter les problèmes d'index
+            for i in range(doc.Comments.Count, 0, -1):
+                doc.Comments(i).Delete()
+
+        # Chemin de sortie (fichier temporaire)
         base_name = os.path.splitext(os.path.basename(doc_path))[0]
         docx_path = os.path.join(temp_dir, f"{base_name}.docx")
         abs_docx_path = os.path.abspath(docx_path)
 
         # Sauvegarder en .docx (format 16 = wdFormatXMLDocument)
+        # Le fichier est sauvegardé dans le dossier temporaire, pas sur l'original
         doc.SaveAs2(abs_docx_path, FileFormat=16)
 
         logging.info(f"[docx_processing] Conversion Word réussie: {docx_path}")

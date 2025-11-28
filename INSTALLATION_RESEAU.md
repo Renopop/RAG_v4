@@ -510,3 +510,8 @@ Avant de déployer en production :
 ---
 
 **Bonne utilisation de RaGME_UP - PROP avec FAISS ! 🚀**
+
+---
+
+**Version:** 1.8
+**Dernière mise à jour:** 2025-11-28

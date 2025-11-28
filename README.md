@@ -40,17 +40,17 @@ L'application s'ouvre automatiquement dans votre navigateur sur `http://localhos
 - 📝 **Gestion CSV** avec interface GUI moderne
 - 📥 **Ingestion documents** (PDF, DOCX, DOC, TXT) avec tracking automatique
 - 🔄 **Mise à jour globale** : bouton pour traiter tous les CSV en une fois
-- 🌐 **Ingestion Confluence** : chargement d'espaces entiers via API
+- 🌐 **Ingestion Confluence** : chargement d'espaces entiers via API *(admin)*
 - ✈️ **Mode EASA automatique** : activé automatiquement pour la base CERTIFICATION
 - 🔒 **Coordination multi-utilisateurs** avec système de verrous
-- 🗑️ **Purge des bases** FAISS
+- 🗑️ **Purge des bases** FAISS *(admin)*
 - ❓ **Questions RAG** avec recherche sémantique et génération de réponses
 - 💾 **Cache local** : copie locale des bases pour performances réseau optimales
-- 📖 **Documentation intégrée** : accès aux guides directement depuis l'interface
+- 📖 **Documentation intégrée** : accès aux guides sous le titre principal
 - 📝 **Feedback utilisateur** : évaluation granulaire des réponses et sources
 - 🔄 **Re-ranking intelligent** : amélioration des résultats basée sur les feedbacks
-- 📊 **Tableau de bord analytique** : statistiques et tendances des retours
-- 👥 **Authentification** utilisateurs pour l'accès aux paramètres
+- 📊 **Tableau de bord analytique** : statistiques et tendances *(admin)*
+- 👥 **Gestion des accès** : onglets et configuration restreints à l'administrateur
 
 ---
 
@@ -224,7 +224,7 @@ Le système supporte l'extraction de texte depuis de multiples formats de docume
 |--------|------------------------|----------|---------------------------|
 | **PDF** | pdfplumber | pdfminer.six → PyMuPDF | **Extraction tableaux**, pièces jointes, nettoyage Unicode |
 | **DOCX** | python-docx | - | Tables, sections, paragraphes |
-| **DOC** | pywin32 (Word) | - | ✅ Conversion automatique via Microsoft Word (Windows) |
+| **DOC** | pywin32 (Word) | - | ✅ Conversion auto via Word, accepte révisions, supprime commentaires |
 | **XML** | xml.etree.ElementTree | - | Patterns EASA configurables |
 | **TXT/MD** | Lecture native | - | Détection encodage |
 | **CSV** | Lecture native | - | Extraction texte brut |
@@ -488,5 +488,5 @@ Consultez la documentation pour toute question :
 
 ---
 
-**Version:** 1.7
+**Version:** 1.8
 **Dernière mise à jour:** 2025-11-28
