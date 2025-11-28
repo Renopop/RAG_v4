@@ -1435,7 +1435,7 @@ with (tab_confluence if tab_confluence is not None else nullcontext()):
 
         confluence_url_input = st.text_input(
             "URL Confluence",
-            placeholder="https://confluence.entreprise.com/confluence/display/PROJ/Page",
+            value="https://confluence.c3.dassault-aviation.pro:8445/spaces/EQUIP00000179/",
             help="Collez n'importe quelle URL Confluence depuis votre navigateur (page, espace, accueil...)"
         )
 
