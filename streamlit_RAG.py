@@ -283,8 +283,10 @@ def list_collections_for_base(base_root: str, base_name: str) -> List[str]:
     try:
         store = get_cached_faiss_store(db_path)
         colls = store.list_collections()  # FAISS retourne directement une liste de noms
+        logger.debug(f"[list_collections] Base {base_name}: {len(colls)} collections trouvées")
         return sorted(colls)
-    except Exception:
+    except Exception as e:
+        logger.error(f"[list_collections] Erreur pour {base_name}: {e}")
         return []
 
 
@@ -389,6 +391,7 @@ st.set_page_config(
 if "cache_cleared_on_load" not in st.session_state:
     st.session_state["cache_cleared_on_load"] = True
     # Vider les caches des listes uniquement (PAS les stores FAISS)
+    list_bases.clear()
     list_collections_for_base.clear()
     get_collection_doc_counts.clear()
 
@@ -2008,8 +2011,9 @@ with tab_rag:
 
     with sel_col3:
         st.markdown("&nbsp;")  # Espacement pour aligner
-        if st.button("🔄 Actualiser", use_container_width=True, help="Actualiser la liste des collections depuis le réseau"):
+        if st.button("🔄 Actualiser", use_container_width=True, help="Actualiser la liste des bases et collections depuis le réseau"):
             # Vider uniquement les caches des listes (PAS les stores FAISS)
+            list_bases.clear()
             list_collections_for_base.clear()
             get_collection_doc_counts.clear()
             st.rerun()
