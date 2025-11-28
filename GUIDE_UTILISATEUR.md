@@ -405,6 +405,36 @@ Un champ texte s'affiche pour décrire la **réponse que vous attendiez**. Cette
 
 > 💡 Plus vous donnez de feedbacks, plus le système s'améliore pour tous les utilisateurs !
 
+#### 💾 Cache local pour performances réseau
+
+Si vous travaillez sur un réseau lent, le système propose un **cache local** pour accélérer les requêtes.
+
+**Dans la barre latérale (sidebar)** :
+
+1. **Section "💾 Cache local"** : affiche l'état du cache pour chaque collection
+2. **Bouton "📥 Copier local"** : copie la collection sélectionnée en local
+3. **Utilisation automatique** : une fois le cache créé, il est utilisé automatiquement
+
+**Fonctionnement :**
+
+| Situation | Comportement |
+|-----------|--------------|
+| **Pas de cache** | Requêtes via réseau (plus lent) |
+| **Cache créé** | Requêtes en local (ultra-rapide) |
+| **Cache obsolète** | Bannière d'avertissement + requêtes via réseau |
+
+**⚠️ Avertissement cache obsolète :**
+
+Si la base réseau a été modifiée (nouvelle ingestion), une bannière orange s'affiche :
+
+> ⚠️ **Cache local obsolète** - La base a été modifiée sur le réseau. Cliquez sur "📥 Copier local" pour mettre à jour. Les requêtes utilisent actuellement la base réseau.
+
+**Actions recommandées :**
+- Cliquez sur **"📥 Copier local"** pour mettre à jour le cache
+- Ou ignorez : les requêtes continueront via le réseau
+
+> 💡 Le cache est stocké dans `~/.cache/ragme_up/` et est automatiquement invalidé après chaque ingestion locale.
+
 ---
 
 ### 📊 **Onglet 6 : Tableau de bord analytique**
@@ -487,6 +517,17 @@ Visualisez les statistiques et tendances des retours utilisateurs.
 - Testé avec plusieurs milliers de documents
 - Performance stable même sur partage réseau
 
+**Q : Le réseau est lent, comment accélérer ?**
+- ✅ **Utilisez le cache local !**
+- Dans la sidebar, cliquez sur "📥 Copier local" pour la collection
+- Le cache est automatiquement utilisé pour toutes les requêtes suivantes
+- Si la base réseau change, un avertissement vous invite à mettre à jour
+
+**Q : Où est stocké le cache local ?**
+- Dans `~/.cache/ragme_up/` (dossier utilisateur)
+- Structure miroir de la base réseau
+- Fichier `.hash` pour validation automatique
+
 ### Chunking et Parsing
 
 **Q : Comment fonctionne le chunking adaptatif ?**
@@ -548,9 +589,9 @@ Les logs détaillés sont dans : `rag_da_debug.log`
 
 Consultez-les en cas d'erreur pour voir ce qui s'est passé.
 
-### Contact
+### Auteur
 
-Pour toute question ou problème, contactez l'équipe de développement RaGME_UP - PROP.
+**Renaud LOISON** - Développeur du projet RaGME_UP - PROP.
 
 ---
 
@@ -578,14 +619,39 @@ Pour toute question ou problème, contactez l'équipe de développement RaGME_UP
 
 ---
 
-## 🆕 Nouveautés de cette version (v1.5)
+## 🆕 Nouveautés de cette version (v1.7)
 
-### 📊 Extraction de tableaux PDF (NOUVEAU)
+### 🔄 Mise à jour globale des bases (NOUVEAU)
+- 🔄 **Bouton "Mise à jour de toutes les bases"** : traite tous les CSV du répertoire en un clic
+- 📊 **Indicateur** : affiche le nombre de CSV disponibles
+- ⚠️ **Avertissement** : prévient que l'opération peut prendre plusieurs minutes
+- ❌ **Annulation** : bouton pour désélectionner tous les fichiers
+
+### ✈️ Mode EASA automatique (NOUVEAU)
+- ✈️ **Activation automatique** : le mode EASA (CS/AMC/GM) s'active automatiquement pour la base CERTIFICATION
+- 📋 **Checkbox masqué** : pas besoin de cocher manuellement pour CERTIFICATION
+- ℹ️ **Message info** : indication claire quand le mode est auto-activé
+- 🔧 **Manuel pour autres bases** : le checkbox reste disponible pour les autres bases
+
+### 📖 Documentation intégrée (NOUVEAU)
+- 📖 **Section Documentation** dans la sidebar
+- 📋 **4 guides accessibles** : README, Guide Utilisateur, Architecture Technique, Installation Réseau
+- 👁️ **Affichage pleine page** : contenu markdown rendu directement dans l'interface
+- 🔙 **Retour facile** : bouton pour revenir à l'application
+
+### 💾 Cache local automatique
+- 📥 **Bouton "Copier local"** : copie la base FAISS en local pour performances optimales
+- 🔄 **Utilisation automatique** : une fois créé, le cache est utilisé sans intervention
+- ✅ **Validation automatique** : le cache est comparé à la base réseau à chaque requête
+- ⚠️ **Avertissement si obsolète** : bannière orange si la base réseau a changé
+- 🌐 **Fallback réseau** : si le cache est obsolète, les requêtes passent par le réseau
+
+### 📊 Extraction de tableaux PDF
 - 📋 **pdfplumber** : détection automatique des tableaux dans les PDF
 - 📝 **Formatage markdown** : tableaux formatés avec colonnes alignées
 - 🔄 **Triple fallback** : pdfplumber → pdfminer.six → PyMuPDF
 
-### ⚡ Améliorations de performance (NOUVEAU)
+### ⚡ Améliorations de performance
 - 🚀 **Cache Streamlit** : réponses instantanées pour requêtes répétées (30 min)
 - 📦 **BATCH_SIZE optimisé** : 32 (équilibre performance/sécurité)
 - 🔒 **Troncature automatique** : textes > 28000 chars tronqués (limite Snowflake)

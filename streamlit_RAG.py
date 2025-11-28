@@ -24,6 +24,7 @@ import streamlit as st
 from models_utils import EMBED_MODEL, LLM_MODEL, make_logger
 from rag_ingestion import ingest_documents, build_faiss_store
 from rag_query import run_rag_query
+from faiss_store import get_cache_manager, LocalCacheManager
 from feedback_store import FeedbackStore, create_feedback, QueryFeedback
 from config_manager import (
     load_config,
@@ -68,9 +69,9 @@ logger = make_logger(debug=False)
 # =====================================================================
 
 @st.cache_resource(ttl=600, show_spinner=False)  # Cache 10 minutes (singleton)
-def get_cached_faiss_store(db_path: str):
+def get_cached_faiss_store(db_path: str, use_local_cache: bool = False):
     """Retourne un store FAISS caché pour éviter les reconstructions."""
-    return build_faiss_store(db_path)
+    return build_faiss_store(db_path, use_local_cache=use_local_cache, lazy_load=True)
 
 
 @st.cache_data(ttl=1800, show_spinner=False)  # Cache 30 minutes
@@ -87,6 +88,7 @@ def cached_rag_query(
     """
     Version cachée de run_rag_query pour éviter les recalculs sur requêtes identiques.
     Le cache est invalidé après 30 minutes (ttl=1800).
+    Utilise automatiquement le cache local si disponible.
     """
     return run_rag_query(
         db_path=db_path,
@@ -99,6 +101,7 @@ def cached_rag_query(
         use_feedback_reranking=use_feedback_reranking,
         use_query_expansion=use_query_expansion,
         use_bge_reranker=use_bge_reranker,
+        use_local_cache=True,  # Toujours actif - utilise cache local si disponible
     )
 
 
@@ -516,6 +519,217 @@ if current_user in allowed_users:
         st.caption(f"🔹 Embeddings : **Snowflake** – `{EMBED_MODEL}`")
         st.caption(f"🔹 LLM : **DALLEM** – `{LLM_MODEL}`")
 
+        st.markdown("---")
+
+        # ========================
+        #   SECTION CACHE LOCAL
+        # ========================
+        st.markdown("### 💾 Cache Local")
+        st.caption("Copiez une base localement pour des requêtes rapides")
+
+        # Initialiser le gestionnaire de cache
+        cache_mgr = get_cache_manager()
+        cache_status = cache_mgr.get_cache_status()
+
+        # Afficher le statut du cache
+        if cache_status['collections_count'] > 0:
+            st.success(f"📊 {cache_status['collections_count']} collection(s) en cache ({cache_status['total_size_mb']:.1f} MB)")
+
+        # Sélection de la base et collection pour le cache
+        if bases:
+            cache_base = st.selectbox(
+                "Base",
+                options=bases,
+                key="cache_base_select"
+            )
+
+            if cache_base:
+                base_path = os.path.join(base_root, cache_base)
+                try:
+                    store = build_faiss_store(base_path)
+                    collections = store.list_collections()
+
+                    if collections:
+                        cache_collection = st.selectbox(
+                            "Collection",
+                            options=collections,
+                            key="cache_collection_select"
+                        )
+
+                        if cache_collection:
+                            collection_path = os.path.join(base_path, cache_collection)
+                            is_cached = cache_mgr.is_cached(collection_path)
+
+                            if is_cached:
+                                is_valid = cache_mgr.is_cache_valid(collection_path)
+                                if is_valid:
+                                    st.success("✅ En cache (auto)")
+                                else:
+                                    st.warning("⚠️ Cache obsolète")
+
+                            # Option pour copier toutes les bases ou juste la collection en cours
+                            cache_scope = st.radio(
+                                "Portée",
+                                options=["Collection en cours", "Toutes les bases"],
+                                key="cache_scope_radio",
+                                horizontal=True
+                            )
+
+                            if cache_scope == "Toutes les bases":
+                                st.warning("⚠️ **Attention** : Copier toutes les bases peut prendre plusieurs minutes selon la taille des données.")
+
+                            # Bouton pour créer/mettre à jour le cache
+                            col_cache1, col_cache2 = st.columns(2)
+
+                            with col_cache1:
+                                btn_label = "🔄 Actualiser" if is_cached else "📥 Copier local"
+                                if st.button(
+                                    btn_label,
+                                    type="primary",
+                                    use_container_width=True,
+                                    help="Copie en local selon la portée sélectionnée"
+                                ):
+                                    if cache_scope == "Toutes les bases":
+                                        # Copier toutes les collections de toutes les bases
+                                        with st.spinner("Copie de toutes les bases en cours..."):
+                                            progress_bar = st.progress(0)
+                                            status_text = st.empty()
+                                            total_copied = 0
+                                            total_errors = 0
+
+                                            # Compter le nombre total de collections
+                                            all_collections = []
+                                            for b in bases:
+                                                bp = os.path.join(base_root, b)
+                                                try:
+                                                    s = build_faiss_store(bp)
+                                                    for c in s.list_collections():
+                                                        all_collections.append((bp, c))
+                                                except:
+                                                    pass
+
+                                            total = len(all_collections)
+                                            for idx, (bp, c) in enumerate(all_collections):
+                                                cp = os.path.join(bp, c)
+                                                status_text.text(f"Copie {c}... ({idx+1}/{total})")
+                                                progress_bar.progress(int((idx / total) * 100))
+                                                try:
+                                                    cache_mgr.copy_to_cache(cp)
+                                                    total_copied += 1
+                                                except Exception as e:
+                                                    total_errors += 1
+                                                    log.error(f"Erreur cache {cp}: {e}")
+
+                                            progress_bar.progress(100)
+                                            if total_errors > 0:
+                                                st.warning(f"✅ {total_copied} collections copiées, {total_errors} erreurs")
+                                            else:
+                                                st.success(f"✅ {total_copied} collections copiées !")
+                                            st.rerun()
+                                    else:
+                                        # Copier uniquement la collection sélectionnée
+                                        with st.spinner("Copie en cours..."):
+                                            progress_bar = st.progress(0)
+                                            status_text = st.empty()
+
+                                            def update_progress(progress, message):
+                                                progress_bar.progress(int(progress))
+                                                status_text.text(message)
+
+                                            try:
+                                                cache_mgr.copy_to_cache(
+                                                    collection_path,
+                                                    progress_callback=update_progress
+                                                )
+                                                st.success("✅ Copié !")
+                                                st.rerun()
+                                            except Exception as e:
+                                                st.error(f"❌ Erreur: {e}")
+
+                            with col_cache2:
+                                if is_cached:
+                                    if st.button(
+                                        "🗑️ Supprimer",
+                                        use_container_width=True
+                                    ):
+                                        cache_mgr.invalidate_cache(collection_path)
+                                        st.rerun()
+                    else:
+                        st.info("Aucune collection")
+                except Exception as e:
+                    st.error(f"Erreur: {e}")
+
+            # Bouton pour vider tout le cache
+            if cache_status['collections_count'] > 0:
+                st.markdown("---")
+                if st.button("🧹 Vider tout le cache"):
+                    cache_mgr.clear_all_cache()
+                    st.rerun()
+
+        st.markdown("---")
+
+        # ========================
+        #   SECTION DOCUMENTATION
+        # ========================
+        st.markdown("### 📖 Documentation")
+        st.caption("Accédez aux guides et documentation")
+
+        # Définir les fichiers de documentation
+        DOC_FILES = {
+            "📋 README": "README.md",
+            "👤 Guide Utilisateur": "GUIDE_UTILISATEUR.md",
+            "🔧 Architecture Technique": "ARCHITECTURE_TECHNIQUE.md",
+            "🌐 Installation Réseau": "INSTALLATION_RESEAU.md"
+        }
+
+        # Selectbox pour choisir le document
+        selected_doc = st.selectbox(
+            "Choisir un document",
+            options=list(DOC_FILES.keys()),
+            key="doc_select"
+        )
+
+        # Bouton pour afficher le document sélectionné
+        if st.button("📄 Afficher", type="primary", use_container_width=True):
+            doc_file = DOC_FILES[selected_doc]
+            doc_path = os.path.join(os.path.dirname(__file__), doc_file)
+            st.session_state["show_doc"] = doc_path
+            st.session_state["show_doc_title"] = selected_doc
+
+        # Bouton pour fermer le document
+        if st.session_state.get("show_doc"):
+            if st.button("❌ Fermer doc", use_container_width=True):
+                st.session_state["show_doc"] = None
+                st.session_state["show_doc_title"] = None
+                st.rerun()
+
+
+# ========================
+#   AFFICHAGE DOCUMENTATION
+# ========================
+if st.session_state.get("show_doc"):
+    doc_path = st.session_state["show_doc"]
+    doc_title = st.session_state.get("show_doc_title", "Documentation")
+
+    st.markdown(f"## {doc_title}")
+    st.markdown("---")
+
+    try:
+        with open(doc_path, "r", encoding="utf-8") as f:
+            doc_content = f.read()
+        st.markdown(doc_content)
+    except FileNotFoundError:
+        st.error(f"❌ Fichier non trouvé : {doc_path}")
+    except Exception as e:
+        st.error(f"❌ Erreur lors de la lecture : {e}")
+
+    st.markdown("---")
+    if st.button("🔙 Retour à l'application", type="primary"):
+        st.session_state["show_doc"] = None
+        st.session_state["show_doc_title"] = None
+        st.rerun()
+
+    st.stop()  # Arrête le rendu du reste de la page
 
 # ========================
 #   TABS
@@ -631,23 +845,8 @@ with tab_ingest:
         st.session_state["created_locks"] = []
         st.session_state["stop_ingestion"] = False
         st.session_state["ingestion_running"] = False
+        st.session_state["bulk_update_all"] = False  # Réinitialiser la sélection globale
         st.rerun()
-
-    # Option EASA sections
-    if "use_easa_sections" not in st.session_state:
-        st.session_state["use_easa_sections"] = False
-
-    use_easa_sections = st.checkbox(
-        "Utiliser les sections EASA (CS / AMC / GM)",
-        value=st.session_state["use_easa_sections"],
-        help=(
-            "Quand activé, le texte est d'abord découpé par sections CS/AMC/GM "
-            "avant le chunking."
-        ),
-    )
-    st.session_state["use_easa_sections"] = use_easa_sections
-
-    st.markdown("---")
 
     # Sélection de CSV depuis CSV_IMPORT_DIR
     st.markdown(f"### 📂 Sélectionner des CSV depuis `{CSV_IMPORT_DIR}`")
@@ -661,11 +860,39 @@ with tab_ingest:
         ])
 
     if available_csvs:
+        # Bouton pour mise à jour globale de toutes les bases
+        col_update_all, col_count = st.columns([2, 1])
+        with col_update_all:
+            if st.button(
+                "🔄 Mise à jour de toutes les bases",
+                type="primary",
+                use_container_width=True,
+                help="Traite automatiquement TOUS les fichiers CSV du répertoire"
+            ):
+                st.session_state["bulk_update_all"] = True
+                st.rerun()
+        with col_count:
+            st.info(f"📊 **{len(available_csvs)}** CSV disponibles")
+
+        # Si mise à jour globale demandée, pré-sélectionner tous les CSV
+        if st.session_state.get("bulk_update_all", False):
+            st.warning(f"⚠️ **Mise à jour globale** : {len(available_csvs)} fichiers CSV seront traités. Cela peut prendre plusieurs minutes.")
+            default_selection = available_csvs
+        else:
+            default_selection = []
+
         selected_csv_files = st.multiselect(
             "Fichiers CSV disponibles",
             options=available_csvs,
+            default=default_selection,
             help=f"Sélectionnez un ou plusieurs CSV depuis {CSV_IMPORT_DIR}"
         )
+
+        # Bouton pour annuler la sélection globale
+        if st.session_state.get("bulk_update_all", False):
+            if st.button("❌ Annuler la sélection globale"):
+                st.session_state["bulk_update_all"] = False
+                st.rerun()
     else:
         selected_csv_files = []
         if not CSV_IMPORT_DIR:
@@ -699,6 +926,37 @@ with tab_ingest:
     if uploaded_csvs:
         for uploaded in uploaded_csvs:
             csv_files_to_process.append(("uploaded", uploaded.name, uploaded))
+
+    # ========================================================================
+    # OPTION EASA - Auto-activation pour base CERTIFICATION
+    # ========================================================================
+    # Détecter les bases sélectionnées
+    selected_bases = set()
+    for source_type, csv_name, _ in csv_files_to_process:
+        base_name = Path(csv_name).stem.upper()
+        selected_bases.add(base_name)
+
+    # Vérifier si CERTIFICATION est dans les bases sélectionnées
+    has_certification = "CERTIFICATION" in selected_bases
+
+    if has_certification:
+        # Auto-activation pour CERTIFICATION
+        use_easa_sections = True
+        st.info("✈️ **Mode EASA activé automatiquement** pour la base CERTIFICATION (découpage CS/AMC/GM)")
+    else:
+        # Option manuelle pour les autres bases
+        if "use_easa_sections" not in st.session_state:
+            st.session_state["use_easa_sections"] = False
+
+        use_easa_sections = st.checkbox(
+            "✈️ Utiliser les sections EASA (CS / AMC / GM)",
+            value=st.session_state["use_easa_sections"],
+            help=(
+                "Quand activé, le texte est d'abord découpé par sections CS/AMC/GM "
+                "avant le chunking. Activé automatiquement pour la base CERTIFICATION."
+            ),
+        )
+        st.session_state["use_easa_sections"] = use_easa_sections
 
     # Afficher l'état des bases (indicateur de disponibilité pour coordination)
     st.markdown("---")
@@ -1308,6 +1566,7 @@ with tab_ingest:
                 st.session_state["ingestion_running"] = False
                 st.session_state["stop_ingestion"] = False
                 st.session_state["created_locks"] = []
+                st.session_state["bulk_update_all"] = False  # Réinitialiser la sélection globale
 
                 # Masquer le bouton stop
                 stop_button_placeholder.empty()
@@ -2012,6 +2271,21 @@ with tab_rag:
         if 'file_open_error' in st.session_state:
             st.error(st.session_state['file_open_error'])
             del st.session_state['file_open_error']
+
+        # Avertissement si le cache est obsolète
+        cache_outdated = False
+        if result_type in ('single', 'synthesized'):
+            result = st.session_state['last_result']
+            cache_outdated = result.get('cache_outdated', False)
+        elif result_type == 'individual':
+            all_results = st.session_state['last_result']
+            cache_outdated = any(r.get('cache_outdated', False) for _, r in all_results)
+
+        if cache_outdated:
+            st.warning(
+                "⚠️ **Cache local obsolète** - La base a été modifiée sur le réseau. "
+                "Les données proviennent du réseau. Mettez à jour le cache local dans le menu latéral."
+            )
 
         if result_type == 'single':
             # Affichage pour une collection unique
