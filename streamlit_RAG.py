@@ -15,6 +15,7 @@ import shutil
 import csv
 import io
 import getpass
+import unicodedata
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Tuple, Callable, Optional
@@ -64,6 +65,22 @@ except ImportError:
     CONFLUENCE_AVAILABLE = False
 
 logger = make_logger(debug=False)
+
+
+def sanitize_collection_name(name: str) -> str:
+    """
+    Nettoie un nom pour en faire un nom de collection valide.
+    - Supprime les accents (é→e, à→a, etc.)
+    - Ne garde que les caractères alphanumériques, espaces, tirets, underscores
+    - Convertit en minuscules
+    - Limite à 50 caractères
+    """
+    # Normaliser et supprimer les accents
+    normalized = unicodedata.normalize('NFD', name)
+    without_accents = ''.join(c for c in normalized if unicodedata.category(c) != 'Mn')
+    # Ne garder que les caractères sûrs
+    safe = ''.join(c if c.isalnum() or c in ' -_' else '_' for c in without_accents)
+    return safe.lower().strip()[:50]
 
 
 # =====================================================================
@@ -1755,7 +1772,7 @@ with (tab_confluence if tab_confluence is not None else nullcontext()):
                         preview_names = []
                         for section in st.session_state.confluence_sections.keys():
                             if st.session_state.confluence_selected_sections.get(section, False):
-                                safe_name = "".join(c if c.isalnum() or c in " -_" else "_" for c in section).lower().strip()[:50]
+                                safe_name = sanitize_collection_name(section)
                                 preview_names.append(safe_name)
                         if preview_names:
                             st.caption(f"Collections qui seront créées: `{'`, `'.join(preview_names[:5])}`{'...' if len(preview_names) > 5 else ''}")
@@ -1812,7 +1829,7 @@ with (tab_confluence if tab_confluence is not None else nullcontext()):
                             for page in selected_pages_list:
                                 if not page.get("text", "").strip():
                                     continue
-                                safe_title = "".join(c if c.isalnum() or c in " -_" else "_" for c in page["title"])[:50]
+                                safe_title = sanitize_collection_name(page["title"])
                                 temp_file = os.path.join(temp_dir, f"{page['id']}_{safe_title}.txt")
                                 with open(temp_file, "w", encoding="utf-8") as f:
                                     f.write(page["text"])
@@ -1851,7 +1868,7 @@ with (tab_confluence if tab_confluence is not None else nullcontext()):
                                     section_progress_base = idx / len(selected_sections)
                                     section_progress_step = 1 / len(selected_sections)
 
-                                    safe_collection = "".join(c if c.isalnum() or c in " -_" else "_" for c in section_name).lower().strip()[:50]
+                                    safe_collection = sanitize_collection_name(section_name)
                                     log(f"📁 Section '{section_name}' -> collection '{safe_collection}'")
                                     update_progress(section_progress_base, f"Ingestion de '{section_name}'...")
 
@@ -1862,7 +1879,7 @@ with (tab_confluence if tab_confluence is not None else nullcontext()):
                                     for page in section_pages:
                                         if not page.get("text", "").strip():
                                             continue
-                                        safe_title = "".join(c if c.isalnum() or c in " -_" else "_" for c in page["title"])[:50]
+                                        safe_title = sanitize_collection_name(page["title"])
                                         temp_file = os.path.join(temp_dir, f"{page['id']}_{safe_title}.txt")
                                         with open(temp_file, "w", encoding="utf-8") as f:
                                             f.write(page["text"])
@@ -1900,7 +1917,7 @@ with (tab_confluence if tab_confluence is not None else nullcontext()):
                                     for page in section_pages:
                                         if not page.get("text", "").strip():
                                             continue
-                                        safe_title = "".join(c if c.isalnum() or c in " -_" else "_" for c in page["title"])[:50]
+                                        safe_title = sanitize_collection_name(page["title"])
                                         temp_file = os.path.join(temp_dir, f"{page['id']}_{safe_title}.txt")
                                         with open(temp_file, "w", encoding="utf-8") as f:
                                             f.write(page["text"])
