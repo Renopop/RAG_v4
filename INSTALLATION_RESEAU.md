@@ -486,7 +486,8 @@ Pour toute question ou problème :
 1. Consultez **GUIDE_UTILISATEUR.md**
 2. Consultez les logs : `rag_da_debug.log`
 3. Vérifiez les chemins (pas d'espaces)
-4. Contactez l'équipe de développement
+
+**Auteur** : Renaud LOISON
 
 ---
 

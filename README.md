@@ -481,6 +481,8 @@ Consultez la documentation pour toute question :
 - Installation réseau → [Installation Réseau](INSTALLATION_RESEAU.md)
 - Développement/maintenance → [Architecture Technique](ARCHITECTURE_TECHNIQUE.md)
 
+**Auteur** : Renaud LOISON
+
 ---
 
 **Version:** 1.6

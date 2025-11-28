@@ -589,9 +589,9 @@ Les logs détaillés sont dans : `rag_da_debug.log`
 
 Consultez-les en cas d'erreur pour voir ce qui s'est passé.
 
-### Contact
+### Auteur
 
-Pour toute question ou problème, contactez l'équipe de développement RaGME_UP - PROP.
+**Renaud LOISON** - Développeur du projet RaGME_UP - PROP.
 
 ---
 
