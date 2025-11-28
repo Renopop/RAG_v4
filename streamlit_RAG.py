@@ -1962,7 +1962,7 @@ with tab_rag:
     st.subheader("❓ Poser une question au RAG (DALLEM)")
 
     # Sélection de la base et collection
-    sel_col1, sel_col2 = st.columns(2)
+    sel_col1, sel_col2, sel_col3 = st.columns([2, 2, 1])
 
     with sel_col1:
         st.markdown("**Base sélectionnée :**")
@@ -1994,6 +1994,15 @@ with tab_rag:
             options=(["ALL"] + collections_for_query) if collections_for_query else ["ALL"],
             label_visibility="collapsed"
         )
+
+    with sel_col3:
+        st.markdown("&nbsp;")  # Espacement pour aligner
+        if st.button("🔄 Actualiser", use_container_width=True, help="Actualiser la liste des collections depuis le réseau"):
+            # Vider les caches pour forcer le rechargement
+            list_collections_for_base.clear()
+            get_collection_doc_counts.clear()
+            get_cached_faiss_store.clear()
+            st.rerun()
 
     # ========================
     #   SECTION CACHE LOCAL
