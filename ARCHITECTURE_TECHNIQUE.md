@@ -771,6 +771,16 @@ def ingest_documents(...):
     cache_mgr.invalidate_cache(collection_path)
 ```
 
+#### Cache Streamlit (TTLs)
+
+| Fonction | TTL | Description |
+|----------|-----|-------------|
+| `list_bases()` | 5 min | Liste des bases FAISS |
+| `list_collections_for_base()` | 5 min | Collections d'une base |
+| `get_collection_doc_counts()` | 5 min | Compteurs de documents |
+| `get_cached_faiss_store()` | 10 min | Instances FaissStore |
+| `cached_rag_query()` | 30 min | Résultats de requêtes RAG |
+
 ---
 
 ```python
