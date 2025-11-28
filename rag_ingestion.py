@@ -43,10 +43,16 @@ logger = make_logger(debug=False)
 #  FAISS HELPERS
 # =====================================================================
 
-def build_faiss_store(path: str) -> FaissStore:
-    """Create (and if needed, initialize) a FAISS store."""
+def build_faiss_store(path: str, use_local_cache: bool = False, lazy_load: bool = True) -> FaissStore:
+    """Create (and if needed, initialize) a FAISS store.
+
+    Args:
+        path: Chemin du répertoire de la base
+        use_local_cache: Si True, utilise le cache local pour les lectures
+        lazy_load: Si True, charge les index seulement au premier accès
+    """
     os.makedirs(path, exist_ok=True)
-    return FaissStore(path=path)
+    return FaissStore(path=path, use_local_cache=use_local_cache, lazy_load=lazy_load)
 
 
 def get_or_create_collection(store: FaissStore, name: str):
