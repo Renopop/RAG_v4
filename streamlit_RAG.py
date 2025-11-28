@@ -2009,6 +2009,18 @@ with tab_rag:
             label_visibility="collapsed"
         )
 
+        # Debug: afficher si aucune collection trouvée
+        if bases and base_for_query != "(aucune)" and not collections_for_query:
+            db_path_debug = os.path.join(base_root, base_for_query)
+            if os.path.exists(db_path_debug):
+                subdirs = [d for d in os.listdir(db_path_debug) if os.path.isdir(os.path.join(db_path_debug, d))]
+                if subdirs:
+                    st.warning(f"⚠️ {len(subdirs)} dossier(s) trouvé(s) mais aucune collection valide (manque index.faiss ou metadata.json)")
+                else:
+                    st.info(f"ℹ️ La base '{base_for_query}' est vide (aucun sous-dossier)")
+            else:
+                st.error(f"❌ Chemin inaccessible: {db_path_debug}")
+
     with sel_col3:
         st.markdown("&nbsp;")  # Espacement pour aligner
         if st.button("🔄 Actualiser", use_container_width=True, help="Actualiser la liste des bases et collections depuis le réseau"):
