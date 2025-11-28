@@ -315,10 +315,17 @@ adapted_chunk_size = _get_adaptive_chunk_size(
 **Symptôme :** L'application est lente
 
 **Solutions :**
+- ✅ **Utilisez le cache local** : Dans la sidebar, cliquez sur "📥 Copier local"
 - ✅ FAISS est rapide et déjà optimisé
 - Utilisez un lecteur réseau mappé (N:) au lieu de UNC (\\SERVEUR)
 - Vérifiez la bande passante réseau
 - FAISS charge en RAM = requêtes ultra-rapides après premier chargement
+
+**Cache local automatique :**
+- Copie la base FAISS en local (`~/.cache/ragme_up/`)
+- Requêtes ultra-rapides sans accès réseau
+- Validation automatique de la fraîcheur
+- Avertissement si la base réseau a été modifiée
 
 ---
 
@@ -402,7 +409,8 @@ Si `requirements.txt` a changé :
    → Sélectionner base + collection → Taper question
    → Sources cliquables avec bouton "Ouvrir"
 
-NOUVEAUTÉS v1.4 :
+NOUVEAUTÉS v1.6 :
+✅ Cache local automatique (performances réseau optimales)
 ✅ FAISS = compatible réseau Windows
 ✅ Extraction tableaux PDF (pdfplumber)
 ✅ Cache Streamlit (requêtes répétées instantanées)
@@ -429,12 +437,36 @@ CSV_IMPORT_DIR = r"N:\DA\SOC\RDA\ORG\DGT\POLE-SYSTEME\ENERGIE\RESERVE\PROP\Knowl
 CSV_EXPORT_DIR = r"N:\DA\SOC\RDA\ORG\DGT\POLE-SYSTEME\ENERGIE\RESERVE\PROP\Knowledge\IA_PROP\FAISS_DATABASE\Fichiers_Tracking_CSV"
 ```
 
-### Option 2 : Cache local pour les requêtes
+### Option 2 : Cache local pour les requêtes (RECOMMANDÉ)
 
-Pour de meilleures performances en requêtes fréquentes :
-- FAISS charge l'index en RAM au premier accès
-- Accès suivants = ultra-rapides (pas d'accès disque)
-- Idéal pour bases souvent interrogées
+Le système propose un **cache local automatique** pour des performances optimales :
+
+**Comment activer :**
+1. Dans l'onglet "Questions RAG", sélectionnez votre base
+2. Dans la sidebar, cliquez sur **"📥 Copier local"**
+3. Choisissez : **Base en cours** ou **Toutes les bases** (plus long)
+4. Le cache est ensuite utilisé automatiquement
+
+**Avantages :**
+- ✅ Requêtes ultra-rapides (lecture locale)
+- ✅ Pas d'accès réseau pour les recherches
+- ✅ Validation automatique de la fraîcheur
+- ✅ Avertissement si le cache devient obsolète
+
+**Fonctionnement :**
+- Cache stocké dans `~/.cache/ragme_up/`
+- Validation automatique à chaque requête (comparaison hash)
+- Si base réseau modifiée → avertissement + fallback réseau
+- Invalidation automatique après ingestion locale
+
+**Structure du cache :**
+```
+~/.cache/ragme_up/
+└── [hash_collection]/
+    ├── index.faiss      # Index vectoriel local
+    ├── metadata.json    # Métadonnées
+    └── .hash            # Hash de validation
+```
 
 ### Option 3 : GPU pour grandes bases (Avancé)
 

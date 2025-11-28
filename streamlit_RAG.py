@@ -567,6 +567,17 @@ if current_user in allowed_users:
                                 else:
                                     st.warning("⚠️ Cache obsolète")
 
+                            # Option pour copier toutes les bases ou juste la collection en cours
+                            cache_scope = st.radio(
+                                "Portée",
+                                options=["Collection en cours", "Toutes les bases"],
+                                key="cache_scope_radio",
+                                horizontal=True
+                            )
+
+                            if cache_scope == "Toutes les bases":
+                                st.warning("⚠️ **Attention** : Copier toutes les bases peut prendre plusieurs minutes selon la taille des données.")
+
                             # Bouton pour créer/mettre à jour le cache
                             col_cache1, col_cache2 = st.columns(2)
 
@@ -576,25 +587,64 @@ if current_user in allowed_users:
                                     btn_label,
                                     type="primary",
                                     use_container_width=True,
-                                    help="Copie la collection en local"
+                                    help="Copie en local selon la portée sélectionnée"
                                 ):
-                                    with st.spinner("Copie en cours..."):
-                                        progress_bar = st.progress(0)
-                                        status_text = st.empty()
+                                    if cache_scope == "Toutes les bases":
+                                        # Copier toutes les collections de toutes les bases
+                                        with st.spinner("Copie de toutes les bases en cours..."):
+                                            progress_bar = st.progress(0)
+                                            status_text = st.empty()
+                                            total_copied = 0
+                                            total_errors = 0
 
-                                        def update_progress(progress, message):
-                                            progress_bar.progress(int(progress))
-                                            status_text.text(message)
+                                            # Compter le nombre total de collections
+                                            all_collections = []
+                                            for b in bases:
+                                                bp = os.path.join(base_root, b)
+                                                try:
+                                                    s = build_faiss_store(bp)
+                                                    for c in s.list_collections():
+                                                        all_collections.append((bp, c))
+                                                except:
+                                                    pass
 
-                                        try:
-                                            cache_mgr.copy_to_cache(
-                                                collection_path,
-                                                progress_callback=update_progress
-                                            )
-                                            st.success("✅ Copié !")
+                                            total = len(all_collections)
+                                            for idx, (bp, c) in enumerate(all_collections):
+                                                cp = os.path.join(bp, c)
+                                                status_text.text(f"Copie {c}... ({idx+1}/{total})")
+                                                progress_bar.progress(int((idx / total) * 100))
+                                                try:
+                                                    cache_mgr.copy_to_cache(cp)
+                                                    total_copied += 1
+                                                except Exception as e:
+                                                    total_errors += 1
+                                                    log.error(f"Erreur cache {cp}: {e}")
+
+                                            progress_bar.progress(100)
+                                            if total_errors > 0:
+                                                st.warning(f"✅ {total_copied} collections copiées, {total_errors} erreurs")
+                                            else:
+                                                st.success(f"✅ {total_copied} collections copiées !")
                                             st.rerun()
-                                        except Exception as e:
-                                            st.error(f"❌ Erreur: {e}")
+                                    else:
+                                        # Copier uniquement la collection sélectionnée
+                                        with st.spinner("Copie en cours..."):
+                                            progress_bar = st.progress(0)
+                                            status_text = st.empty()
+
+                                            def update_progress(progress, message):
+                                                progress_bar.progress(int(progress))
+                                                status_text.text(message)
+
+                                            try:
+                                                cache_mgr.copy_to_cache(
+                                                    collection_path,
+                                                    progress_callback=update_progress
+                                                )
+                                                st.success("✅ Copié !")
+                                                st.rerun()
+                                            except Exception as e:
+                                                st.error(f"❌ Erreur: {e}")
 
                             with col_cache2:
                                 if is_cached:

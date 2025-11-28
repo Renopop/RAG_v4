@@ -43,6 +43,7 @@ L'application s'ouvre automatiquement dans votre navigateur sur `http://localhos
 - 🔒 **Coordination multi-utilisateurs** avec système de verrous
 - 🗑️ **Purge des bases** FAISS
 - ❓ **Questions RAG** avec recherche sémantique et génération de réponses
+- 💾 **Cache local** : copie locale des bases pour performances réseau optimales
 - 📝 **Feedback utilisateur** : évaluation granulaire des réponses et sources
 - 🔄 **Re-ranking intelligent** : amélioration des résultats basée sur les feedbacks
 - 📊 **Tableau de bord analytique** : statistiques et tendances des retours
@@ -482,5 +483,5 @@ Consultez la documentation pour toute question :
 
 ---
 
-**Version:** 1.5
-**Dernière mise à jour:** 2025-11-27
+**Version:** 1.6
+**Dernière mise à jour:** 2025-11-28

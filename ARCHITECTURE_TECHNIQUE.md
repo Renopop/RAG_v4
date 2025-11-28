@@ -12,10 +12,11 @@ Documentation technique complète du système RAG pour développeurs et maintene
 4. [Système de Chunking](#système-de-chunking)
 5. [Parsers de documents](#parsers-de-documents)
 6. [Stockage vectoriel FAISS](#stockage-vectoriel-faiss)
-7. [Pipeline de requête](#pipeline-de-requête)
-8. [Configuration](#configuration)
-9. [API et modèles](#api-et-modèles)
-10. [Dépendances](#dépendances)
+7. [Cache local](#cache-local)
+8. [Pipeline de requête](#pipeline-de-requête)
+9. [Configuration](#configuration)
+10. [API et modèles](#api-et-modèles)
+11. [Dépendances](#dépendances)
 
 ---
 
@@ -666,6 +667,109 @@ def extract_text_from_confluence_space(
 
 ### Architecture (`faiss_store.py`)
 
+#### Cache local pour performances réseau
+
+```python
+class LocalCacheManager:
+    """
+    Gestionnaire de cache local pour les bases FAISS réseau.
+
+    Permet de copier les bases FAISS en local pour des performances
+    de lecture optimales, tout en validant la fraîcheur du cache.
+
+    Structure cache:
+    ~/.cache/ragme_up/
+    └── [hash_du_chemin]/
+        ├── index.faiss      # Copie locale de l'index
+        ├── metadata.json    # Copie locale des métadonnées
+        └── .hash            # Hash de validation (taille + mtime)
+    """
+
+    def __init__(self, cache_dir: str = None):
+        """Par défaut: ~/.cache/ragme_up/"""
+
+    def is_cached(self, network_path: str) -> bool:
+        """Vérifie si une collection est en cache"""
+
+    def is_cache_valid(self, network_path: str) -> bool:
+        """
+        Compare le hash local avec le hash réseau.
+        Hash = f"{size}_{mtime}" de index.faiss
+        Retourne False si le cache est obsolète.
+        """
+
+    def cache_collection(self, network_path: str) -> str:
+        """
+        Copie une collection réseau en local.
+        Retourne le chemin local.
+        """
+
+    def get_local_path(self, network_path: str) -> str:
+        """Retourne le chemin du cache local"""
+
+    def invalidate_cache(self, network_path: str):
+        """Supprime le cache (appelé après ingestion)"""
+
+    def get_cache_info(self, network_path: str) -> dict:
+        """
+        Retourne: {
+            'is_cached': bool,
+            'is_valid': bool,
+            'local_path': str,
+            'cache_size': int
+        }
+        """
+
+# Singleton global
+_cache_manager = None
+
+def get_cache_manager() -> LocalCacheManager:
+    """Retourne l'instance singleton du cache manager"""
+```
+
+#### Utilisation automatique dans FaissCollection
+
+```python
+class FaissCollection:
+    def __init__(self, collection_path, name, dimension=1024,
+                 use_local_cache=False, lazy_load=True):
+        """
+        Paramètres:
+        - use_local_cache: Active l'utilisation du cache local
+        - lazy_load: Diffère le chargement de l'index FAISS
+
+        Attributs ajoutés:
+        - self.cache_outdated: True si le cache existe mais est obsolète
+        - self.using_cache: True si le cache est utilisé pour cette instance
+        """
+
+        if use_local_cache:
+            cache_mgr = get_cache_manager()
+            if cache_mgr.is_cached(collection_path):
+                if cache_mgr.is_cache_valid(collection_path):
+                    # Cache valide → utiliser le cache
+                    self.collection_path = cache_mgr.get_local_path(collection_path)
+                    self.using_cache = True
+                else:
+                    # Cache obsolète → utiliser le réseau + avertir
+                    self.collection_path = collection_path  # réseau
+                    self.cache_outdated = True
+```
+
+#### Invalidation automatique après ingestion
+
+```python
+# Dans rag_ingestion.py
+def ingest_documents(...):
+    # ... ingestion ...
+
+    # Invalider le cache après ingestion
+    cache_mgr = get_cache_manager()
+    cache_mgr.invalidate_cache(collection_path)
+```
+
+---
+
 ```python
 class FAISSStore:
     """
@@ -984,5 +1088,5 @@ logging.basicConfig(
 
 ---
 
-**Version:** 1.5
-**Dernière mise à jour:** 2025-11-27
+**Version:** 1.6
+**Dernière mise à jour:** 2025-11-28
