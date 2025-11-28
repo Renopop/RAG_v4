@@ -283,8 +283,10 @@ def list_collections_for_base(base_root: str, base_name: str) -> List[str]:
     try:
         store = get_cached_faiss_store(db_path)
         colls = store.list_collections()  # FAISS retourne directement une liste de noms
+        logger.debug(f"[list_collections] Base {base_name}: {len(colls)} collections trouvées")
         return sorted(colls)
-    except Exception:
+    except Exception as e:
+        logger.error(f"[list_collections] Erreur pour {base_name}: {e}")
         return []
 
 
@@ -389,6 +391,7 @@ st.set_page_config(
 if "cache_cleared_on_load" not in st.session_state:
     st.session_state["cache_cleared_on_load"] = True
     # Vider les caches des listes uniquement (PAS les stores FAISS)
+    list_bases.clear()
     list_collections_for_base.clear()
     get_collection_doc_counts.clear()
 
@@ -1479,24 +1482,34 @@ with tab_confluence:
                 placeholder="votre.email@entreprise.com"
             )
 
-        confluence_password = st.text_input(
-            "Mot de passe / Token API",
-            type="password",
-            help="Pour Confluence Cloud, utilisez un token API (créé depuis les paramètres Atlassian)"
-        )
+        col_pwd, col_ssl = st.columns([3, 1])
+        with col_pwd:
+            confluence_password = st.text_input(
+                "Mot de passe / Token API",
+                type="password",
+                help="Pour Confluence Cloud, utilisez un token API (créé depuis les paramètres Atlassian)"
+            )
+        with col_ssl:
+            confluence_skip_ssl = st.checkbox(
+                "Ignorer SSL",
+                value=False,
+                help="Cochez si votre serveur utilise un certificat auto-signé"
+            )
 
         col_test, col_status = st.columns([1, 3])
         with col_test:
             if st.button("🔗 Tester la connexion", disabled=not (confluence_url and confluence_user and confluence_password)):
                 with st.spinner("Test de connexion..."):
-                    result = test_confluence_connection(confluence_url, confluence_user, confluence_password)
+                    verify_ssl = not confluence_skip_ssl
+                    result = test_confluence_connection(confluence_url, confluence_user, confluence_password, verify_ssl=verify_ssl)
                     if result["success"]:
                         st.session_state.confluence_connected = True
                         st.session_state.confluence_url = confluence_url
                         st.session_state.confluence_user = confluence_user
                         st.session_state.confluence_password = confluence_password
+                        st.session_state.confluence_verify_ssl = verify_ssl
                         # Charger la liste des espaces
-                        st.session_state.confluence_spaces = list_spaces(confluence_url, confluence_user, confluence_password)
+                        st.session_state.confluence_spaces = list_spaces(confluence_url, confluence_user, confluence_password, verify_ssl=verify_ssl)
                         st.success(result["message"])
                     else:
                         st.session_state.confluence_connected = False
@@ -1542,7 +1555,8 @@ with tab_confluence:
                     st.session_state.confluence_url,
                     confluence_space_key,
                     st.session_state.confluence_user,
-                    st.session_state.confluence_password
+                    st.session_state.confluence_password,
+                    verify_ssl=st.session_state.get("confluence_verify_ssl", True)
                 )
                 if space_info:
                     st.info(f"📁 **{space_info['name']}** - {space_info.get('description', 'Pas de description')[:100]}")
@@ -1610,7 +1624,8 @@ with tab_confluence:
                         confluence_space_key,
                         st.session_state.confluence_user,
                         st.session_state.confluence_password,
-                        progress_cb=lambda p, t: progress(0.1 + p * 0.4, t)
+                        progress_cb=lambda p, t: progress(0.1 + p * 0.4, t),
+                        verify_ssl=st.session_state.get("confluence_verify_ssl", True)
                     )
 
                     if not pages:
@@ -1996,8 +2011,9 @@ with tab_rag:
 
     with sel_col3:
         st.markdown("&nbsp;")  # Espacement pour aligner
-        if st.button("🔄 Actualiser", use_container_width=True, help="Actualiser la liste des collections depuis le réseau"):
+        if st.button("🔄 Actualiser", use_container_width=True, help="Actualiser la liste des bases et collections depuis le réseau"):
             # Vider uniquement les caches des listes (PAS les stores FAISS)
+            list_bases.clear()
             list_collections_for_base.clear()
             get_collection_doc_counts.clear()
             st.rerun()

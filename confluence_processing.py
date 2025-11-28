@@ -123,19 +123,32 @@ def test_confluence_connection(
     base_url: str,
     username: str,
     password: str,
+    verify_ssl: bool = True,
 ) -> Dict[str, Any]:
     """
     Teste la connexion à Confluence.
 
+    Args:
+        base_url: URL de base Confluence
+        username: Nom d'utilisateur
+        password: Mot de passe ou token API
+        verify_ssl: Si False, désactive la vérification SSL (utile pour certificats auto-signés)
+
     Returns:
         Dict avec 'success', 'message', et optionnellement 'user_info'
     """
+    # Désactiver les warnings SSL si verify_ssl=False
+    if not verify_ssl:
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
     try:
         api_url = _build_api_url(base_url, "user/current")
         response = requests.get(
             api_url,
             auth=_get_auth(username, password),
             timeout=10,
+            verify=verify_ssl,
         )
 
         if response.status_code == 200:
@@ -150,16 +163,26 @@ def test_confluence_connection(
                 "success": False,
                 "message": "Authentification échouée. Vérifiez vos identifiants.",
             }
+        elif response.status_code == 404:
+            return {
+                "success": False,
+                "message": f"API non trouvée à {api_url}. Vérifiez l'URL de base.",
+            }
         else:
             return {
                 "success": False,
                 "message": f"Erreur HTTP {response.status_code}: {response.text[:200]}",
             }
 
-    except requests.exceptions.ConnectionError:
+    except requests.exceptions.SSLError as e:
         return {
             "success": False,
-            "message": f"Impossible de se connecter à {base_url}. Vérifiez l'URL.",
+            "message": f"Erreur SSL: {str(e)}. Essayez de cocher 'Ignorer certificat SSL'.",
+        }
+    except requests.exceptions.ConnectionError as e:
+        return {
+            "success": False,
+            "message": f"Impossible de se connecter à {base_url}. Erreur: {str(e)[:100]}",
         }
     except Exception as e:
         return {
@@ -172,6 +195,7 @@ def list_spaces(
     base_url: str,
     username: str,
     password: str,
+    verify_ssl: bool = True,
 ) -> List[Dict[str, str]]:
     """
     Liste tous les espaces Confluence accessibles.
@@ -189,6 +213,7 @@ def list_spaces(
             api_url,
             auth=_get_auth(username, password),
             timeout=30,
+            verify=verify_ssl,
         )
 
         if response.status_code != 200:
@@ -219,6 +244,7 @@ def get_space_pages(
     username: str,
     password: str,
     progress_cb: Optional[ProgressFn] = None,
+    verify_ssl: bool = True,
 ) -> List[Dict[str, Any]]:
     """
     Récupère toutes les pages d'un espace Confluence.
@@ -245,6 +271,7 @@ def get_space_pages(
                 api_url,
                 auth=_get_auth(username, password),
                 timeout=60,
+                verify=verify_ssl,
             )
         except requests.exceptions.Timeout:
             logging.error(f"[confluence] Timeout lors de la récupération des pages (start={start})")
@@ -306,6 +333,7 @@ def extract_text_from_confluence_space(
     username: str,
     password: str,
     progress_cb: Optional[ProgressFn] = None,
+    verify_ssl: bool = True,
 ) -> List[Dict[str, Any]]:
     """
     Extrait le texte de toutes les pages d'un espace Confluence.
@@ -322,7 +350,7 @@ def extract_text_from_confluence_space(
         progress_cb(0.0, "Connexion à Confluence...")
 
     # Récupérer les pages
-    pages = get_space_pages(base_url, space_key, username, password, progress_cb)
+    pages = get_space_pages(base_url, space_key, username, password, progress_cb, verify_ssl=verify_ssl)
 
     if not pages:
         logging.warning(f"[confluence] Aucune page trouvée dans l'espace {space_key}")
@@ -363,6 +391,7 @@ def get_space_info(
     space_key: str,
     username: str,
     password: str,
+    verify_ssl: bool = True,
 ) -> Optional[Dict[str, Any]]:
     """
     Récupère les informations d'un espace.
@@ -377,6 +406,7 @@ def get_space_info(
             api_url,
             auth=_get_auth(username, password),
             timeout=10,
+            verify=verify_ssl,
         )
 
         if response.status_code == 200:
