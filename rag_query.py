@@ -125,6 +125,12 @@ def _run_rag_query_single_collection(
     store = build_store(db_path, use_local_cache=use_local_cache)
     collection = store.get_collection(name=collection_name)
 
+    # Capturer l'état du cache pour l'avertissement
+    cache_outdated = getattr(collection, 'cache_outdated', False)
+    using_cache = getattr(collection, 'using_cache', False)
+    if cache_outdated:
+        _log.warning(f"[RAG] ⚠️ Cache obsolète pour {collection_name} - utilisation réseau")
+
     # 2) Client embeddings Snowflake
     http_client = create_http_client()
     emb_client = DirectOpenAIEmbeddings(
@@ -206,6 +212,8 @@ def _run_rag_query_single_collection(
             "context_str": "",
             "raw_results": raw,
             "sources": [],
+            "cache_outdated": cache_outdated,
+            "using_cache": using_cache,
         }
 
     # 5) Construction du contexte + liste des sources
@@ -408,6 +416,8 @@ def _run_rag_query_single_collection(
             "context_str": full_context,
             "raw_results": raw,
             "sources": sources,
+            "cache_outdated": cache_outdated,
+            "using_cache": using_cache,
         }
 
     # 6) Appel LLM DALLEM
@@ -423,6 +433,8 @@ def _run_rag_query_single_collection(
         "context_str": full_context,
         "raw_results": raw,
         "sources": sources,
+        "cache_outdated": cache_outdated,
+        "using_cache": using_cache,
     }
 
 
@@ -492,6 +504,8 @@ def run_rag_query(
                 "context_str": "",
                 "raw_results": {},
                 "sources": [],
+                "cache_outdated": False,
+                "using_cache": False,
             }
 
         if not synthesize_all:
@@ -505,6 +519,7 @@ def run_rag_query(
         # ---- Mode synthèse globale : un seul appel LLM avec le contexte concaténé ----
         all_sources: List[Dict[str, Any]] = []
         all_context_blocks: List[str] = []
+        any_cache_outdated = False  # Track si au moins un cache est obsolète
 
         for col_name in collections:  # FAISS retourne directement les noms (strings)
             _log.info(f"[RAG-ALL-SYNTH] Retrieval sur collection '{col_name}'")
@@ -535,6 +550,10 @@ def run_rag_query(
             context_str = res.get("context_str", "")
             sources = res.get("sources", [])
 
+            # Capturer l'état du cache
+            if res.get("cache_outdated", False):
+                any_cache_outdated = True
+
             if context_str:
                 all_context_blocks.append(
                     f"=== CONTEXTE {col_name} ===\n{context_str}".strip()
@@ -555,6 +574,8 @@ def run_rag_query(
                 "context_str": "",
                 "raw_results": {},
                 "sources": [],
+                "cache_outdated": any_cache_outdated,
+                "using_cache": False,
             }
 
         http_client = create_http_client()
@@ -570,6 +591,8 @@ def run_rag_query(
             "context_str": global_context,
             "raw_results": {},
             "sources": all_sources,
+            "cache_outdated": any_cache_outdated,
+            "using_cache": False,  # En mode ALL, on agrège donc pas de "using_cache" unique
         }
 
     # Cas normal : une seule collection

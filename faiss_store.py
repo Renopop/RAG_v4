@@ -296,13 +296,24 @@ class FaissCollection:
         self.dimension = dimension
         self.use_local_cache = use_local_cache
         self._lazy_load = lazy_load
+        self.cache_outdated = False  # Flag pour signaler un cache obsolète
+        self.using_cache = False  # Flag pour indiquer si on utilise le cache
 
         # Déterminer le chemin effectif (local ou réseau)
         if use_local_cache:
             cache_mgr = get_cache_manager()
             if cache_mgr.is_cached(collection_path):
-                self.collection_path = cache_mgr.get_local_path(collection_path)
-                logger.info(f"[FAISS] Utilisation du cache local: {self.collection_path}")
+                # Vérifier si le cache est à jour
+                if cache_mgr.is_cache_valid(collection_path):
+                    # Cache valide → utiliser le cache local
+                    self.collection_path = cache_mgr.get_local_path(collection_path)
+                    self.using_cache = True
+                    logger.info(f"[FAISS] ✅ Cache local valide: {self.collection_path}")
+                else:
+                    # Cache obsolète → utiliser le réseau et signaler
+                    self.collection_path = collection_path
+                    self.cache_outdated = True
+                    logger.warning(f"[FAISS] ⚠️ Cache obsolète pour {name}, utilisation réseau")
             else:
                 self.collection_path = collection_path
                 logger.info(f"[FAISS] Cache local non disponible, utilisation réseau: {collection_path}")

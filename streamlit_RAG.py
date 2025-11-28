@@ -2113,6 +2113,21 @@ with tab_rag:
             st.error(st.session_state['file_open_error'])
             del st.session_state['file_open_error']
 
+        # Avertissement si le cache est obsolète
+        cache_outdated = False
+        if result_type in ('single', 'synthesized'):
+            result = st.session_state['last_result']
+            cache_outdated = result.get('cache_outdated', False)
+        elif result_type == 'individual':
+            all_results = st.session_state['last_result']
+            cache_outdated = any(r.get('cache_outdated', False) for _, r in all_results)
+
+        if cache_outdated:
+            st.warning(
+                "⚠️ **Cache local obsolète** - La base a été modifiée sur le réseau. "
+                "Les données proviennent du réseau. Mettez à jour le cache local dans le menu latéral."
+            )
+
         if result_type == 'single':
             # Affichage pour une collection unique
             result = st.session_state['last_result']
