@@ -158,7 +158,7 @@ Indexez vos documents dans FAISS pour pouvoir les interroger.
 |--------|-----------------|----------|-----------------|
 | **PDF** | pdfplumber | pdfminer.six → PyMuPDF | **Tableaux**, pièces jointes, nettoyage Unicode |
 | **DOCX** | python-docx | - | Tables, sections, paragraphes |
-| **DOC** | pywin32 (Word) | - | ✅ Conversion automatique via Microsoft Word (Windows) |
+| **DOC** | pywin32 (Word) | - | ✅ Conversion auto, accepte révisions, supprime commentaires |
 | **XML** | ElementTree | - | Patterns EASA (CS, AMC, GM) |
 | **TXT/MD** | Lecture native | - | Détection encodage auto |
 | **CSV** | Lecture native | - | Extraction texte brut |
@@ -680,8 +680,14 @@ Consultez-les en cas d'erreur pour voir ce qui s'est passé.
 ### 📄 Parsing Multi-Format
 - **PDF** : pdfplumber (tableaux) + pdfminer.six + PyMuPDF + pièces jointes
 - **DOCX** : python-docx avec tables, sections, paragraphes
-- **DOC** : ✅ Conversion automatique via Microsoft Word (Windows)
+- **DOC** : ✅ Conversion auto via Word (accepte révisions, supprime commentaires)
 - **XML** : Parser EASA configurable (CS, AMC, GM, CS-E, CS-APU)
+
+### 📝 Conversion DOC améliorée (NOUVEAU)
+- ✅ **Révisions acceptées** : le suivi des modifications est automatiquement accepté
+- ❌ **Commentaires supprimés** : les commentaires ne sont pas inclus dans l'extraction
+- 🔒 **Original préservé** : le fichier .doc source n'est jamais modifié
+- 🗑️ **Nettoyage automatique** : le fichier .docx temporaire est supprimé après ingestion
 
 ### 🌐 Ingestion Confluence (NOUVEAU)
 - 🔗 **Connexion API** : Support Cloud (atlassian.net) et Server

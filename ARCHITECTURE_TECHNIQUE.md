@@ -521,6 +521,9 @@ def convert_doc_to_docx(doc_path: str) -> str:
     """
     Conversion .doc → .docx via Microsoft Word (Windows).
     Requiert pywin32 et Word installé.
+    - Accepte toutes les révisions (track changes)
+    - Supprime tous les commentaires
+    - Original non modifié (fichier temp supprimé après)
     """
 
 def docx_to_text(path: str) -> str:
@@ -529,7 +532,7 @@ def docx_to_text(path: str) -> str:
 def extract_text_from_docx(path: str) -> str:
     """
     Extraction texte .docx ou .doc.
-    Pour .doc: conversion automatique via Word.
+    Pour .doc: conversion via Word (accepte révisions, supprime commentaires).
     """
 
 def extract_paragraphs_from_docx(path: str) -> List[str]:

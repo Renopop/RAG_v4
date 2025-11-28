@@ -224,7 +224,7 @@ Le système supporte l'extraction de texte depuis de multiples formats de docume
 |--------|------------------------|----------|---------------------------|
 | **PDF** | pdfplumber | pdfminer.six → PyMuPDF | **Extraction tableaux**, pièces jointes, nettoyage Unicode |
 | **DOCX** | python-docx | - | Tables, sections, paragraphes |
-| **DOC** | pywin32 (Word) | - | ✅ Conversion automatique via Microsoft Word (Windows) |
+| **DOC** | pywin32 (Word) | - | ✅ Conversion auto via Word, accepte révisions, supprime commentaires |
 | **XML** | xml.etree.ElementTree | - | Patterns EASA configurables |
 | **TXT/MD** | Lecture native | - | Détection encodage |
 | **CSV** | Lecture native | - | Extraction texte brut |
