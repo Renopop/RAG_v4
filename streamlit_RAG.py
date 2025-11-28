@@ -382,6 +382,17 @@ st.set_page_config(
 )
 
 # ========================
+#   ACTUALISATION DU CACHE AU CHARGEMENT
+# ========================
+# Vider le cache des collections au premier chargement de la session
+# pour garantir des données fraîches depuis le réseau
+if "cache_cleared_on_load" not in st.session_state:
+    st.session_state["cache_cleared_on_load"] = True
+    # Vider les caches des listes uniquement (PAS les stores FAISS)
+    list_collections_for_base.clear()
+    get_collection_doc_counts.clear()
+
+# ========================
 #   VÉRIFICATION DE LA CONFIGURATION
 # ========================
 # Si les répertoires ne sont pas accessibles, afficher la page de configuration
@@ -522,157 +533,10 @@ if current_user in allowed_users:
         st.markdown("---")
 
         # ========================
-        #   SECTION CACHE LOCAL
+        #   SECTION RAGME_UP - PROP
         # ========================
-        st.markdown("### 💾 Cache Local")
-        st.caption("Copiez une base localement pour des requêtes rapides")
-
-        # Initialiser le gestionnaire de cache
-        cache_mgr = get_cache_manager()
-        cache_status = cache_mgr.get_cache_status()
-
-        # Afficher le statut du cache
-        if cache_status['collections_count'] > 0:
-            st.success(f"📊 {cache_status['collections_count']} collection(s) en cache ({cache_status['total_size_mb']:.1f} MB)")
-
-        # Sélection de la base et collection pour le cache
-        if bases:
-            cache_base = st.selectbox(
-                "Base",
-                options=bases,
-                key="cache_base_select"
-            )
-
-            if cache_base:
-                base_path = os.path.join(base_root, cache_base)
-                try:
-                    store = build_faiss_store(base_path)
-                    collections = store.list_collections()
-
-                    if collections:
-                        cache_collection = st.selectbox(
-                            "Collection",
-                            options=collections,
-                            key="cache_collection_select"
-                        )
-
-                        if cache_collection:
-                            collection_path = os.path.join(base_path, cache_collection)
-                            is_cached = cache_mgr.is_cached(collection_path)
-
-                            if is_cached:
-                                is_valid = cache_mgr.is_cache_valid(collection_path)
-                                if is_valid:
-                                    st.success("✅ En cache (auto)")
-                                else:
-                                    st.warning("⚠️ Cache obsolète")
-
-                            # Option pour copier toutes les bases ou juste la collection en cours
-                            cache_scope = st.radio(
-                                "Portée",
-                                options=["Collection en cours", "Toutes les bases"],
-                                key="cache_scope_radio",
-                                horizontal=True
-                            )
-
-                            if cache_scope == "Toutes les bases":
-                                st.warning("⚠️ **Attention** : Copier toutes les bases peut prendre plusieurs minutes selon la taille des données.")
-
-                            # Bouton pour créer/mettre à jour le cache
-                            col_cache1, col_cache2 = st.columns(2)
-
-                            with col_cache1:
-                                btn_label = "🔄 Actualiser" if is_cached else "📥 Copier local"
-                                if st.button(
-                                    btn_label,
-                                    type="primary",
-                                    use_container_width=True,
-                                    help="Copie en local selon la portée sélectionnée"
-                                ):
-                                    if cache_scope == "Toutes les bases":
-                                        # Copier toutes les collections de toutes les bases
-                                        with st.spinner("Copie de toutes les bases en cours..."):
-                                            progress_bar = st.progress(0)
-                                            status_text = st.empty()
-                                            total_copied = 0
-                                            total_errors = 0
-
-                                            # Compter le nombre total de collections
-                                            all_collections = []
-                                            for b in bases:
-                                                bp = os.path.join(base_root, b)
-                                                try:
-                                                    s = build_faiss_store(bp)
-                                                    for c in s.list_collections():
-                                                        all_collections.append((bp, c))
-                                                except:
-                                                    pass
-
-                                            total = len(all_collections)
-                                            for idx, (bp, c) in enumerate(all_collections):
-                                                cp = os.path.join(bp, c)
-                                                status_text.text(f"Copie {c}... ({idx+1}/{total})")
-                                                progress_bar.progress(int((idx / total) * 100))
-                                                try:
-                                                    cache_mgr.copy_to_cache(cp)
-                                                    total_copied += 1
-                                                except Exception as e:
-                                                    total_errors += 1
-                                                    log.error(f"Erreur cache {cp}: {e}")
-
-                                            progress_bar.progress(100)
-                                            if total_errors > 0:
-                                                st.warning(f"✅ {total_copied} collections copiées, {total_errors} erreurs")
-                                            else:
-                                                st.success(f"✅ {total_copied} collections copiées !")
-                                            st.rerun()
-                                    else:
-                                        # Copier uniquement la collection sélectionnée
-                                        with st.spinner("Copie en cours..."):
-                                            progress_bar = st.progress(0)
-                                            status_text = st.empty()
-
-                                            def update_progress(progress, message):
-                                                progress_bar.progress(int(progress))
-                                                status_text.text(message)
-
-                                            try:
-                                                cache_mgr.copy_to_cache(
-                                                    collection_path,
-                                                    progress_callback=update_progress
-                                                )
-                                                st.success("✅ Copié !")
-                                                st.rerun()
-                                            except Exception as e:
-                                                st.error(f"❌ Erreur: {e}")
-
-                            with col_cache2:
-                                if is_cached:
-                                    if st.button(
-                                        "🗑️ Supprimer",
-                                        use_container_width=True
-                                    ):
-                                        cache_mgr.invalidate_cache(collection_path)
-                                        st.rerun()
-                    else:
-                        st.info("Aucune collection")
-                except Exception as e:
-                    st.error(f"Erreur: {e}")
-
-            # Bouton pour vider tout le cache
-            if cache_status['collections_count'] > 0:
-                st.markdown("---")
-                if st.button("🧹 Vider tout le cache"):
-                    cache_mgr.clear_all_cache()
-                    st.rerun()
-
-        st.markdown("---")
-
-        # ========================
-        #   SECTION DOCUMENTATION
-        # ========================
-        st.markdown("### 📖 Documentation")
-        st.caption("Accédez aux guides et documentation")
+        st.markdown("### 🚀 RaGME_UP - PROP")
+        st.caption("Documentation et aide")
 
         # Définir les fichiers de documentation
         DOC_FILES = {
@@ -2097,7 +1961,7 @@ with tab_rag:
     st.subheader("❓ Poser une question au RAG (DALLEM)")
 
     # Sélection de la base et collection
-    sel_col1, sel_col2 = st.columns(2)
+    sel_col1, sel_col2, sel_col3 = st.columns([2, 2, 1])
 
     with sel_col1:
         st.markdown("**Base sélectionnée :**")
@@ -2129,6 +1993,129 @@ with tab_rag:
             options=(["ALL"] + collections_for_query) if collections_for_query else ["ALL"],
             label_visibility="collapsed"
         )
+
+    with sel_col3:
+        st.markdown("&nbsp;")  # Espacement pour aligner
+        if st.button("🔄 Actualiser", use_container_width=True, help="Actualiser la liste des collections depuis le réseau"):
+            # Vider uniquement les caches des listes (PAS les stores FAISS)
+            list_collections_for_base.clear()
+            get_collection_doc_counts.clear()
+            st.rerun()
+
+    # ========================
+    #   SECTION CACHE LOCAL
+    # ========================
+    cache_mgr = get_cache_manager()
+    cache_status = cache_mgr.get_cache_status()
+
+    with st.expander("💾 Cache Local (performances réseau)", expanded=False):
+        # Afficher le statut global du cache
+        if cache_status['collections_count'] > 0:
+            st.success(f"📊 {cache_status['collections_count']} collection(s) en cache ({cache_status['total_size_mb']:.1f} MB)")
+
+        if bases and base_for_query != "(aucune)":
+            base_path_cache = os.path.join(base_root, base_for_query)
+
+            # Option pour copier toutes les bases ou juste la collection en cours
+            cache_scope = st.radio(
+                "Portée du cache",
+                options=["Collection sélectionnée", "Toutes les bases"],
+                key="cache_scope_rag",
+                horizontal=True
+            )
+
+            if cache_scope == "Toutes les bases":
+                st.warning("⚠️ Copier toutes les bases peut prendre plusieurs minutes.")
+
+            # Vérifier le statut du cache pour la collection sélectionnée
+            if collection_for_query != "ALL" and collections_for_query:
+                collection_path_cache = os.path.join(base_path_cache, collection_for_query)
+                is_cached = cache_mgr.is_cached(collection_path_cache)
+
+                if is_cached:
+                    is_valid = cache_mgr.is_cache_valid(collection_path_cache)
+                    if is_valid:
+                        st.success(f"✅ **{collection_for_query}** : en cache local (performances optimales)")
+                    else:
+                        st.warning(f"⚠️ **{collection_for_query}** : cache obsolète - cliquez pour actualiser")
+                else:
+                    st.info(f"ℹ️ **{collection_for_query}** : pas en cache local")
+
+            # Boutons d'action
+            col_cache1, col_cache2, col_cache3 = st.columns(3)
+
+            with col_cache1:
+                if st.button("📥 Copier en local", type="primary", use_container_width=True, key="btn_cache_copy"):
+                    if cache_scope == "Toutes les bases":
+                        with st.spinner("Copie de toutes les bases en cours..."):
+                            progress_bar = st.progress(0)
+                            status_text = st.empty()
+                            total_copied = 0
+                            total_errors = 0
+
+                            all_collections = []
+                            for b in bases:
+                                bp = os.path.join(base_root, b)
+                                try:
+                                    s = build_faiss_store(bp)
+                                    for c in s.list_collections():
+                                        all_collections.append((bp, c))
+                                except:
+                                    pass
+
+                            total = len(all_collections)
+                            for idx, (bp, c) in enumerate(all_collections):
+                                cp = os.path.join(bp, c)
+                                status_text.text(f"Copie {c}... ({idx+1}/{total})")
+                                progress_bar.progress(int((idx / total) * 100))
+                                try:
+                                    cache_mgr.copy_to_cache(cp)
+                                    total_copied += 1
+                                except Exception as e:
+                                    total_errors += 1
+
+                            progress_bar.progress(100)
+                            if total_errors > 0:
+                                st.warning(f"✅ {total_copied} collections copiées, {total_errors} erreurs")
+                            else:
+                                st.success(f"✅ {total_copied} collections copiées !")
+                            st.rerun()
+                    else:
+                        # Copier la collection sélectionnée ou toutes les collections de la base
+                        if collection_for_query != "ALL":
+                            collection_path_cache = os.path.join(base_path_cache, collection_for_query)
+                            with st.spinner(f"Copie de {collection_for_query}..."):
+                                try:
+                                    cache_mgr.copy_to_cache(collection_path_cache)
+                                    st.success("✅ Copié !")
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"❌ Erreur: {e}")
+                        else:
+                            # Copier toutes les collections de la base sélectionnée
+                            with st.spinner(f"Copie de toutes les collections de {base_for_query}..."):
+                                for coll in collections_for_query:
+                                    cp = os.path.join(base_path_cache, coll)
+                                    try:
+                                        cache_mgr.copy_to_cache(cp)
+                                    except:
+                                        pass
+                                st.success("✅ Copié !")
+                                st.rerun()
+
+            with col_cache2:
+                if cache_status['collections_count'] > 0:
+                    if st.button("🧹 Vider cache", use_container_width=True, key="btn_cache_clear"):
+                        cache_mgr.clear_all_cache()
+                        st.rerun()
+
+            with col_cache3:
+                if collection_for_query != "ALL" and collections_for_query:
+                    collection_path_cache = os.path.join(base_path_cache, collection_for_query)
+                    if cache_mgr.is_cached(collection_path_cache):
+                        if st.button("🗑️ Supprimer", use_container_width=True, key="btn_cache_del"):
+                            cache_mgr.invalidate_cache(collection_path_cache)
+                            st.rerun()
 
     st.markdown("---")
 
