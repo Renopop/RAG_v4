@@ -438,23 +438,31 @@ def extract_text_from_confluence_space(
 
 def group_pages_by_section(pages: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
     """
-    Groupe les pages par leur titre (nom de la page uniquement).
+    Groupe les pages par leur page parente (dernier ancêtre).
 
     Args:
-        pages: Liste de pages avec le champ 'title'
+        pages: Liste de pages avec le champ 'path' (format: "Parent > Sous-parent > Page")
 
     Returns:
-        Dict avec clé = titre de la page, valeur = liste contenant cette page
+        Dict avec clé = nom du parent direct, valeur = liste de pages enfants
     """
     sections = {}
 
     for page in pages:
-        # Utiliser uniquement le titre de la page (pas le chemin complet)
-        page_title = page.get("title", "Sans titre")
+        path = page.get("path", "")
+        parts = [p.strip() for p in path.split(">") if p.strip()]
 
-        if page_title not in sections:
-            sections[page_title] = []
-        sections[page_title].append(page)
+        # Utiliser le parent direct (avant-dernier élément) ou la page elle-même si pas de parent
+        if len(parts) >= 2:
+            # Avant-dernier = parent direct de la page
+            parent_section = parts[-2]
+        else:
+            # Pas de parent, utiliser le titre de la page
+            parent_section = page.get("title", "Sans titre")
+
+        if parent_section not in sections:
+            sections[parent_section] = []
+        sections[parent_section].append(page)
 
     # Trier les sections par nom
     return dict(sorted(sections.items()))
