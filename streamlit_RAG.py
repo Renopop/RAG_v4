@@ -845,6 +845,7 @@ with tab_ingest:
         st.session_state["created_locks"] = []
         st.session_state["stop_ingestion"] = False
         st.session_state["ingestion_running"] = False
+        st.session_state["bulk_update_all"] = False  # Réinitialiser la sélection globale
         st.rerun()
 
     # Option EASA sections
@@ -875,11 +876,39 @@ with tab_ingest:
         ])
 
     if available_csvs:
+        # Bouton pour mise à jour globale de toutes les bases
+        col_update_all, col_count = st.columns([2, 1])
+        with col_update_all:
+            if st.button(
+                "🔄 Mise à jour de toutes les bases",
+                type="primary",
+                use_container_width=True,
+                help="Traite automatiquement TOUS les fichiers CSV du répertoire"
+            ):
+                st.session_state["bulk_update_all"] = True
+                st.rerun()
+        with col_count:
+            st.info(f"📊 **{len(available_csvs)}** CSV disponibles")
+
+        # Si mise à jour globale demandée, pré-sélectionner tous les CSV
+        if st.session_state.get("bulk_update_all", False):
+            st.warning(f"⚠️ **Mise à jour globale** : {len(available_csvs)} fichiers CSV seront traités. Cela peut prendre plusieurs minutes.")
+            default_selection = available_csvs
+        else:
+            default_selection = []
+
         selected_csv_files = st.multiselect(
             "Fichiers CSV disponibles",
             options=available_csvs,
+            default=default_selection,
             help=f"Sélectionnez un ou plusieurs CSV depuis {CSV_IMPORT_DIR}"
         )
+
+        # Bouton pour annuler la sélection globale
+        if st.session_state.get("bulk_update_all", False):
+            if st.button("❌ Annuler la sélection globale"):
+                st.session_state["bulk_update_all"] = False
+                st.rerun()
     else:
         selected_csv_files = []
         if not CSV_IMPORT_DIR:
@@ -1522,6 +1551,7 @@ with tab_ingest:
                 st.session_state["ingestion_running"] = False
                 st.session_state["stop_ingestion"] = False
                 st.session_state["created_locks"] = []
+                st.session_state["bulk_update_all"] = False  # Réinitialiser la sélection globale
 
                 # Masquer le bouton stop
                 stop_button_placeholder.empty()
